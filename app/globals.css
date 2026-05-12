@@ -128,3 +128,41 @@
     @apply font-sans;
   }
 }
+
+/* Gantt: weekend column tints — Saturday cool, Sunday warm. Subtle in both themes. */
+.bg-saturday { background: color-mix(in oklab, oklch(0.78 0.08 230) 22%, var(--background)); }
+.bg-sunday   { background: color-mix(in oklab, oklch(0.78 0.08 15)  22%, var(--background)); }
+.dark .bg-saturday { background: color-mix(in oklab, oklch(0.78 0.08 230) 14%, var(--background)); }
+.dark .bg-sunday   { background: color-mix(in oklab, oklch(0.78 0.08 15)  14%, var(--background)); }
+
+/* Today line + pill */
+.gantt-today-pill {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+/* Bar styles by status — keep grayscale-friendly per the design */
+.gantt-bar-todo {
+  background: var(--card);
+  border: 2px solid var(--border);
+  color: var(--foreground);
+}
+.gantt-bar-progress {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid transparent;
+}
+.gantt-bar-done {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px solid transparent;
+}
+.gantt-bar-backlog {
+  background: var(--card);
+  border: 1px dashed var(--border);
+  color: var(--muted-foreground);
+}
+
+.gantt-bar-shadow {
+  box-shadow: 0 4px 12px -2px color-mix(in oklab, black 30%, transparent);
+}
