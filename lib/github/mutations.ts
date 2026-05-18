@@ -1,15 +1,19 @@
 import "server-only";
-import { getGithubClient } from "./client";
+import { getGithubClientForUser } from "./client";
 
 /**
  * Create a Draft Issue inside a ProjectV2 and return the new item ID.
+ *
+ * `actorId` is the ganto user whose linked GitHub access token is used —
+ * threading per-user authorization through every GitHub mutation.
  */
 export async function addDraftIssue(opts: {
   projectId: string;
   title: string;
   body?: string;
+  actorId: string;
 }): Promise<string> {
-  const client = getGithubClient();
+  const client = await getGithubClientForUser(opts.actorId);
   const ADD = /* GraphQL */ `
     mutation ($projectId: ID!, $title: String!, $body: String) {
       addProjectV2DraftIssue(input: {
@@ -47,8 +51,9 @@ export async function updateItemField(opts: {
   itemId: string;
   fieldId: string;
   value: FieldValue;
+  actorId: string;
 }): Promise<void> {
-  const client = getGithubClient();
+  const client = await getGithubClientForUser(opts.actorId);
   const UPDATE = /* GraphQL */ `
     mutation (
       $projectId: ID!

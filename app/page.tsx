@@ -23,7 +23,13 @@ export default async function HomePage() {
           <span className="font-mono text-base font-semibold tracking-tight">ganto</span>
         </div>
         <div className="flex items-center gap-3 text-sm">
-          <span className="text-muted-foreground">{user.email ?? user.name ?? user.id}</span>
+          <Link
+            href="/account"
+            className="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+            title="Account settings"
+          >
+            {user.email ?? user.name ?? user.id}
+          </Link>
         </div>
       </header>
 

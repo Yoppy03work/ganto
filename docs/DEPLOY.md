@@ -35,11 +35,8 @@ Vercel の Project Settings → Environment Variables に以下を入れる。
 | `DATABASE_URL` | Neon Console → Connection details → Pooled connection |
 | `NEON_AUTH_BASE_URL` | Neon Console → Auth タブ → Configuration |
 | `NEON_AUTH_COOKIE_SECRET` | `openssl rand -base64 32` で新しく生成 (本番用) |
-| `AUTH_SECRET` | 既存または `openssl rand -hex 32` |
-| `GITHUB_PAT` | 任意。GitHub Settings → Developer settings → PAT (project read+write scope) |
-| `GITHUB_PROJECT_OWNER` | 任意。デフォルトの GitHub owner |
-| `GANTT_START_FIELD` | `Start` |
-| `GANTT_END_FIELD` | `End` |
+| `GANTT_START_FIELD` | 任意。GitHub Projects v2 の Date フィールド名（デフォルト `Start`） |
+| `GANTT_END_FIELD` | 任意。同上（デフォルト `End`） |
 | `APP_URL` | デプロイ後の URL (招待リンクの絶対 URL に使う) — `https://<project>.vercel.app` |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry → Project Settings → Client Keys (DSN) |
 | `SENTRY_DSN` | 同上（同じ値でよい。サーバー側 init で使う） |
@@ -48,13 +45,15 @@ Vercel の Project Settings → Environment Variables に以下を入れる。
 | `SENTRY_PROJECT` | Sentry の Project slug |
 | `ALLOW_PROJECT_DELETE` | プロジェクト hard delete を許可するか。**通常 `false`**（緊急時のみ一時的に `true`） |
 
-**`AUTH_PASSWORD_HASH` は不要** (旧 shared password 認証の名残で未使用)。
+**`AUTH_PASSWORD_HASH` / `AUTH_SECRET` は不要** (旧 shared password 認証の名残で未使用)。
+**`GITHUB_PAT` も不要** — GitHub Projects v2 同期は v3 で **per-user OAuth** に移行済み。各ユーザーが `/account` から自分の GitHub アカウントを Connect します（後述）。
 
 **メール配信について**: パスワードリセットは **Neon Auth の OTP メール配信**を利用するため、本リリースでは Resend など外部メールプロバイダの設定は不要。詳細は `docs/EMAIL.md` 参照。
 （`resend` パッケージは将来の通知機能用に pre-installed 済みだが、現時点では参照されていない。）
 
 詳細:
 - Sentry の運用ポリシーは `docs/SENTRY.md` 参照（dev は `SENTRY_TEST_MODE=true` で opt-in）
+- GitHub OAuth の設定手順は `docs/GITHUB-OAUTH.md` 参照
 
 ## 4. Neon Auth の Allowed Origins を追加
 
@@ -103,4 +102,5 @@ Vercel 上の "Deploy" を押す。push のたびに自動で再デプロイさ�
 | ログイン後 / にリダイレクトループ | `NEON_AUTH_BASE_URL` の値間違い、または Neon Auth が無効化されている |
 | サインアップで 500 | `DATABASE_URL` の値、または Neon Auth allowed origins に Vercel URL が無い |
 | 招待リンクが `localhost` を含む | `APP_URL` が未設定。Production env に設定する |
-| GitHub Pull/Push がエラー | `GITHUB_PAT` の scope 不足。`project` (read + write) を含めて再発行 |
+| GitHub Pull/Push で 412 GITHUB_NOT_CONNECTED | `/account` で GitHub アカウントを Connect してから再試行 |
+| GitHub Pull/Push で 400 | 接続したアカウントが当該 Project へのアクセス権を持っていない、または Owner/Number 間違い。詳細は `docs/GITHUB-OAUTH.md` |

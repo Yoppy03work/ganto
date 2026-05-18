@@ -35,6 +35,36 @@ export const neonUsers = neonAuthSchema.table("user", {
   banned: boolean("banned"),
 });
 
+/**
+ * Mirrors `neon_auth.account` (Better Auth's linked-provider table). Read-only
+ * from our side — Neon Auth owns the lifecycle (insert/update/delete on
+ * sign-in, linkSocial, unlinkAccount). We mirror it so server code can look
+ * up a user's OAuth access tokens for downstream API calls (e.g. each user's
+ * personal GitHub token for Projects v2 sync).
+ *
+ * Only the columns we actually read are declared.
+ */
+export const neonAccounts = neonAuthSchema.table("account", {
+  id: uuid("id").primaryKey(),
+  // FK target type is text because neon_auth.user.id is uuid but the Better
+  // Auth schema stores user IDs as text in `account.userId`. Cross-cast at
+  // query time when joining (`::uuid`) — matches the pattern used for
+  // memberships → neon_users.
+  userId: text("userId").notNull(),
+  /** "github" | "google" | "credential" (email/password) | ... */
+  providerId: text("providerId").notNull(),
+  /** Provider-side stable user id (e.g. GitHub user numeric id as string). */
+  accountId: text("accountId").notNull(),
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  idToken: text("idToken"),
+  accessTokenExpiresAt: timestamp("accessTokenExpiresAt", { withTimezone: true }),
+  refreshTokenExpiresAt: timestamp("refreshTokenExpiresAt", { withTimezone: true }),
+  scope: text("scope"),
+  createdAt: timestamp("createdAt", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull(),
+});
+
 // ---------- Enums ----------
 
 export const storageModeEnum = pgEnum("storage_mode", ["local", "github"]);

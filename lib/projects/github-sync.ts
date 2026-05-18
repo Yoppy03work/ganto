@@ -48,10 +48,11 @@ export async function pullFromGitHub(opts: {
   const result = await fetchProjectV2({
     owner: project.githubOwner,
     number: project.githubProjectNumber,
+    actorId: opts.actorId,
   });
   if (!result) {
     throw new Error(
-      `Could not load GitHub project ${project.githubOwner}/${project.githubProjectNumber}. Check your PAT scope (needs 'project' read).`
+      `Could not load GitHub project ${project.githubOwner}/${project.githubProjectNumber}. Check that your linked GitHub account has access (needs 'project' read scope).`
     );
   }
 
@@ -203,6 +204,7 @@ export async function pushToGitHub(opts: {
   const remote = await fetchProjectV2({
     owner: project.githubOwner,
     number: project.githubProjectNumber,
+    actorId: opts.actorId,
   });
   if (!remote) {
     throw new Error(
@@ -240,6 +242,7 @@ export async function pushToGitHub(opts: {
         externalId = await addDraftIssue({
           projectId: remote.projectId,
           title: t.title,
+          actorId: opts.actorId,
         });
         await db
           .update(schema.tasks)
@@ -268,6 +271,7 @@ export async function pushToGitHub(opts: {
             itemId: externalId,
             fieldId: statusField.id,
             value: { singleSelectOptionId: opt.id },
+            actorId: opts.actorId,
           });
         } catch (e) {
           out.warnings.push(
@@ -285,6 +289,7 @@ export async function pushToGitHub(opts: {
           itemId: externalId,
           fieldId: startField.id,
           value: { date: t.startAt.toISOString().slice(0, 10) },
+          actorId: opts.actorId,
         });
       } catch (e) {
         out.warnings.push(
@@ -299,6 +304,7 @@ export async function pushToGitHub(opts: {
           itemId: externalId,
           fieldId: endField.id,
           value: { date: t.endAt.toISOString().slice(0, 10) },
+          actorId: opts.actorId,
         });
       } catch (e) {
         out.warnings.push(
