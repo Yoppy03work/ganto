@@ -3,47 +3,40 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 
 /**
  * Initial state passed from the server so the connected/not-connected UI
- * doesn't flash on first paint. After mount the panel re-fetches on demand
- * (after connect/disconnect actions).
+ * doesn't flash on first paint. Banner is the success / error message from
+ * the latest OAuth round-trip (?gh=connected / ?gh_error=...).
  */
 type Initial =
   | {
       connected: true;
-      accountId: string;
+      githubLogin: string | null;
       scope: string | null;
-      updatedAt: string | null;
+      connectedAt: string | null;
     }
   | { connected: false };
 
-export function AccountGitHubPanel({ initial }: { initial: Initial }) {
+type Banner = { kind: "success" | "error"; message: string } | null;
+
+export function AccountGitHubPanel({
+  initial,
+  banner,
+}: {
+  initial: Initial;
+  banner: Banner;
+}) {
   const router = useRouter();
   const [state, setState] = useState<Initial>(initial);
   const [busy, setBusy] = useState(false);
 
-  async function connect() {
+  function connect() {
+    // Use a real navigation (not fetch) so the browser carries cookies
+    // through the GitHub round-trip and back to /api/github/oauth/callback.
     setBusy(true);
-    try {
-      // Better Auth's linkSocial: redirects to the GitHub OAuth consent
-      // screen, then back to callbackURL after the user authorizes. The
-      // returned access token is stored by Neon Auth in the `account` table
-      // — we never see the raw token client-side.
-      // Scopes: read:project + write:project so the user can run both
-      // pull and push from any of their projects.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (authClient as any).linkSocial({
-        provider: "github",
-        callbackURL: "/account?gh=connected",
-        scopes: ["read:project", "project"],
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to start GitHub OAuth");
-      setBusy(false);
-    }
+    window.location.assign("/api/github/oauth/init");
   }
 
   async function disconnect() {
@@ -52,13 +45,21 @@ export function AccountGitHubPanel({ initial }: { initial: Initial }) {
     }
     setBusy(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (authClient as any).unlinkAccount({ providerId: "github" });
+      const res = await fetch("/api/github/oauth/disconnect", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(typeof data.error === "string" ? data.error : "解除に失敗しました");
+        setBusy(false);
+        return;
+      }
       setState({ connected: false });
       toast.success("GitHub の接続を解除しました");
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to unlink");
+      toast.error(err instanceof Error ? err.message : "ネットワークエラー");
     } finally {
       setBusy(false);
     }
@@ -77,6 +78,19 @@ export function AccountGitHubPanel({ initial }: { initial: Initial }) {
         </div>
       </div>
 
+      {banner && (
+        <div
+          role="alert"
+          className={
+            banner.kind === "success"
+              ? "rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm"
+              : "rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+          }
+        >
+          {banner.message}
+        </div>
+      )}
+
       {state.connected ? (
         <div className="space-y-3">
           <div className="text-sm">
@@ -84,9 +98,11 @@ export function AccountGitHubPanel({ initial }: { initial: Initial }) {
               <span className="size-2 rounded-full bg-emerald-500" />
               Connected
             </span>
-            <span className="text-muted-foreground ml-3">
-              GitHub user id: <code className="font-mono">{state.accountId}</code>
-            </span>
+            {state.githubLogin && (
+              <span className="text-muted-foreground ml-3">
+                as <code className="font-mono">@{state.githubLogin}</code>
+              </span>
+            )}
           </div>
           {state.scope && (
             <p className="text-[11px] text-muted-foreground">
