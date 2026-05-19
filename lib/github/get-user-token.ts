@@ -1,44 +1,34 @@
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
-import { db, schema } from "@/db/client";
+import { auth } from "@/lib/auth/server";
 
 /**
- * Look up a user's stored GitHub OAuth access token.
+ * Retrieve the current session user's GitHub OAuth access token via Neon Auth
+ * (Better Auth) so that any expired token gets transparently refreshed using
+ * the stored refresh token before being handed off to the GitHub API client.
+ *
+ * Why not read `neon_auth.account.accessToken` directly?
+ *   - It would bypass Better Auth's refresh path. If a provider hands out
+ *     short-lived tokens (or rotates them), every pull/push would keep sending
+ *     a stale token to GitHub GraphQL and fail until the user re-links.
+ *   - GitHub OAuth Apps typically issue long-lived tokens today, but
+ *     fine-grained tokens / future provider changes can introduce expiry —
+ *     the safe behaviour is to route through the auth backend.
  *
  * Returns `null` when the user has not yet connected GitHub. Callers should
- * surface this as a "Connect GitHub first" UX flow rather than treating it
- * as an error.
+ * surface this as a "Connect GitHub first" UX flow rather than an error.
  *
- * Token storage / refresh is handled by Neon Auth (Better Auth) — we just
- * read the latest value from the mirrored `neon_auth.account` table. If the
- * token has expired and a refresh token is available, Better Auth refreshes
- * it transparently on the next OAuth-aware call, so the value here is the
- * freshest persisted token.
- *
- * NOTE: We deliberately do not silently fall back to `process.env.GITHUB_PAT`
- * anymore. The shared-PAT model leaked one operator's access to every user
- * of the app — explicit per-user tokens are the only correct shape for
- * multi-tenant use.
+ * NOTE: Relies on the current session cookie (Neon Auth reads from
+ * `next/headers` internally). Call only from contexts where a session is
+ * established — i.e. after `requireCurrentUser()` in API routes / Server
+ * Components.
  */
-export async function getUserGitHubAccessToken(userId: string): Promise<string | null> {
-  const rows = await db
-    .select({ accessToken: schema.neonAccounts.accessToken })
-    .from(schema.neonAccounts)
-    .where(
-      and(
-        // memberships.user_id is text but neon_auth.account.userId is also
-        // text (Better Auth stores user IDs as text in its account table),
-        // so no cast is needed here — unlike the user-join case.
-        eq(schema.neonAccounts.userId, userId),
-        eq(schema.neonAccounts.providerId, "github")
-      )
-    )
-    // Defensive: if a user somehow has multiple github rows (re-link), take
-    // the freshest. Better Auth normally upserts so we expect at most one.
-    .orderBy(sql`${schema.neonAccounts.updatedAt} DESC`)
-    .limit(1);
-
-  return rows[0]?.accessToken ?? null;
+export async function getUserGitHubAccessToken(): Promise<string | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await (auth as any).getAccessToken({ providerId: "github" });
+  const data = res?.data as { accessToken?: string } | undefined;
+  const errObj = res?.error;
+  if (errObj || !data?.accessToken) return null;
+  return data.accessToken;
 }
 
 /**
@@ -54,8 +44,8 @@ export class GitHubNotConnectedError extends Error {
   }
 }
 
-export async function requireUserGitHubAccessToken(userId: string): Promise<string> {
-  const token = await getUserGitHubAccessToken(userId);
+export async function requireUserGitHubAccessToken(): Promise<string> {
+  const token = await getUserGitHubAccessToken();
   if (!token) throw new GitHubNotConnectedError();
   return token;
 }
