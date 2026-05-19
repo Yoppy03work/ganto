@@ -1,39 +1,88 @@
 import "server-only";
-import { auth } from "@/lib/auth/server";
+import { and, eq, sql } from "drizzle-orm";
+import { db, schema } from "@/db/client";
 
 /**
- * Retrieve the current session user's GitHub OAuth access token via Neon Auth
- * (Better Auth) so that any expired token gets transparently refreshed using
- * the stored refresh token before being handed off to the GitHub API client.
+ * Look up the current ganto user's GitHub OAuth access token from our own
+ * `github_user_tokens` table.
  *
- * Why not read `neon_auth.account.accessToken` directly?
- *   - It would bypass Better Auth's refresh path. If a provider hands out
- *     short-lived tokens (or rotates them), every pull/push would keep sending
- *     a stale token to GitHub GraphQL and fail until the user re-links.
- *   - GitHub OAuth Apps typically issue long-lived tokens today, but
- *     fine-grained tokens / future provider changes can introduce expiry —
- *     the safe behaviour is to route through the auth backend.
+ * History: we previously tried to pull this from `neon_auth.account` (Better
+ * Auth's linked-provider table) so Neon Auth's refresh path would kick in
+ * transparently. That path didn't work end-to-end for custom GitHub keys
+ * in proxy mode — the state cookie set during linkSocial never made it back
+ * to Neon's backend on the callback hop (cross-domain). We now run our own
+ * OAuth dance in /api/github/oauth/*, on a single domain, so the state
+ * cookie + token storage are both in our control.
  *
- * Returns `null` when the user has not yet connected GitHub. Callers should
- * surface this as a "Connect GitHub first" UX flow rather than an error.
+ * Returns `null` when the user has not yet linked GitHub — surface this in
+ * the UI as a "Connect GitHub first" prompt.
  *
- * NOTE: Relies on the current session cookie (Neon Auth reads from
- * `next/headers` internally). Call only from contexts where a session is
- * established — i.e. after `requireCurrentUser()` in API routes / Server
- * Components.
+ * Optional refresh: this implementation does NOT auto-refresh expired
+ * tokens. GitHub OAuth Apps issue long-lived tokens by default; if your App
+ * is configured for short-lived tokens with refresh tokens, add a refresh
+ * step here using `refreshToken` + `expiresAt`.
  */
-export async function getUserGitHubAccessToken(): Promise<string | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const res = await (auth as any).getAccessToken({ providerId: "github" });
-  const data = res?.data as { accessToken?: string } | undefined;
-  const errObj = res?.error;
-  if (errObj || !data?.accessToken) return null;
-  return data.accessToken;
+export async function getUserGitHubAccessToken(userId: string): Promise<string | null> {
+  const rows = await db
+    .select({
+      accessToken: schema.githubUserTokens.accessToken,
+      expiresAt: schema.githubUserTokens.expiresAt,
+    })
+    .from(schema.githubUserTokens)
+    .where(eq(schema.githubUserTokens.userId, userId))
+    .limit(1);
+  const row = rows[0];
+  if (!row?.accessToken) return null;
+  // Treat an expired token as "not connected" so the UI prompts a re-link
+  // rather than us shipping a stale token to GitHub and failing later.
+  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+    return null;
+  }
+  return row.accessToken;
 }
 
 /**
- * Light wrapper that throws a structured error suitable for surfacing as
- * 412 PRECONDITION_FAILED in API routes.
+ * Read-only "is the user connected?" + lightweight metadata for the UI.
+ */
+export type GitHubConnection = {
+  connected: boolean;
+  githubLogin: string | null;
+  scope: string | null;
+  connectedAt: Date | null;
+};
+
+export async function getGitHubConnection(userId: string): Promise<GitHubConnection> {
+  const rows = await db
+    .select({
+      githubLogin: schema.githubUserTokens.githubLogin,
+      scope: schema.githubUserTokens.scope,
+      createdAt: schema.githubUserTokens.createdAt,
+      expiresAt: schema.githubUserTokens.expiresAt,
+    })
+    .from(schema.githubUserTokens)
+    .where(
+      and(
+        eq(schema.githubUserTokens.userId, userId),
+        // Treat already-expired rows as not connected.
+        sql`(${schema.githubUserTokens.expiresAt} IS NULL OR ${schema.githubUserTokens.expiresAt} > NOW())`
+      )
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) {
+    return { connected: false, githubLogin: null, scope: null, connectedAt: null };
+  }
+  return {
+    connected: true,
+    githubLogin: row.githubLogin,
+    scope: row.scope,
+    connectedAt: row.createdAt,
+  };
+}
+
+/**
+ * Structured error for surfacing 412 PRECONDITION_FAILED in API routes when
+ * a sync requires a GitHub connection.
  */
 export class GitHubNotConnectedError extends Error {
   status = 412;
@@ -44,8 +93,8 @@ export class GitHubNotConnectedError extends Error {
   }
 }
 
-export async function requireUserGitHubAccessToken(): Promise<string> {
-  const token = await getUserGitHubAccessToken();
+export async function requireUserGitHubAccessToken(userId: string): Promise<string> {
+  const token = await getUserGitHubAccessToken(userId);
   if (!token) throw new GitHubNotConnectedError();
   return token;
 }

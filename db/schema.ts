@@ -241,6 +241,43 @@ export const auditLog = pgTable(
   ]
 );
 
+// ---------- GitHub OAuth tokens (ganto-managed, per-user) ----------
+
+// We run our own GitHub OAuth flow (separate from Neon Auth's social
+// providers) because Neon Auth's proxy + custom-OAuth-keys combo doesn't
+// reliably preserve the state cookie across the cross-domain callback hop.
+// Tokens here are obtained directly from GitHub via /api/github/oauth/* and
+// scoped to a single ganto user. Used exclusively by lib/projects/github-sync.
+//
+// Encryption-at-rest: the column is stored in plain text. Neon's DB is
+// encrypted at rest by AWS, and access is row-locked at the application
+// layer. Adding application-level encryption is a follow-up if/when we
+// expose this DB to less-trusted operators.
+export const githubUserTokens = pgTable(
+  "github_user_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Neon Auth user id (text — same shape as memberships.user_id). */
+    userId: text("user_id").notNull(),
+    /** GitHub numeric user id as text (for display + diagnostics). */
+    githubUserId: text("github_user_id").notNull(),
+    /** GitHub login (username) for display. */
+    githubLogin: text("github_login").notNull(),
+    accessToken: text("access_token").notNull(),
+    /** Optional — GitHub OAuth Apps usually issue long-lived tokens. */
+    refreshToken: text("refresh_token"),
+    /** Space-separated scopes granted (echoed back from GitHub). */
+    scope: text("scope"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // One token row per ganto user. Re-linking upserts.
+    unique("github_user_tokens_user_unique").on(t.userId),
+  ]
+);
+
 // ---------- Comments ----------
 
 export const comments = pgTable(

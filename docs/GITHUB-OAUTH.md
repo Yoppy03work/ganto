@@ -1,18 +1,47 @@
 # GitHub OAuth セットアップ
 
-ganto は GitHub Projects v2 同期のために、**各ユーザーが自分の GitHub アカウントを接続する** OAuth 方式を採用しています。
-（以前の単一 `GITHUB_PAT` 共有方式は v3 で廃止。複数ユーザーの権限が漏れ合うリスクと、他人の Project が同期できない制限があったため）
+ganto は GitHub Projects v2 同期のために、**ganto 内で完結する独自 OAuth フロー** を実装しています。Neon Auth の social provider は使いません。
+
+## なぜ独自 OAuth?
+
+最初は Neon Auth (Better Auth) の `linkSocial` 経由で GitHub と連携しようとしましたが、Neon Auth の proxy + 自前 OAuth キーの組み合わせで **state cookie が cross-domain で消える** 問題に当たりました:
+
+```
+ブラウザ → ganto.vercel.app /api/auth (proxy)  → Neon backend が state cookie 発行
+state cookie は ganto.vercel.app ドメインに保存
+↓
+GitHub Authorize → ep-...neon.tech に戻る (redirect_uri が Neon backend に固定)
+↓
+Neon backend は自分のドメインで state cookie を探すが、cookie は ganto にしかない
+→ state_mismatch エラー
+```
+
+Neon の "Shared keys" モードでは内部回避策があって動きますが、自前キーを入れた瞬間にこの抜け道は使えなくなります。
+
+→ **ganto 内で完結する OAuth flow を実装**。すべて単一ドメイン (ganto.vercel.app) で動くので cookie 問題は発生しません。
 
 ## 全体像
 
 ```
-ユーザー A ─── /account の Connect GitHub ───► GitHub OAuth ───► Neon Auth に access_token 保存
-                                                                            │
-                                                                            ▼
-Project Settings → Pull / Push ──────────────► ganto API ─────► A の token で GitHub API
-                                                                            │
-                                                                            ▼
-                                                       ユーザー A がアクセスできる Project のみ
+ユーザー A
+  ↓ /account の Connect GitHub をクリック
+  ↓
+[GET] /api/github/oauth/init           ← ganto
+  state cookie を ganto.vercel.app ドメインに発行
+  ↓ 302 → GitHub authorize
+  ↓
+GitHub OAuth 認可画面
+  ↓ Authorize
+  ↓
+[GET] /api/github/oauth/callback?code=...&state=... ← ganto
+  state cookie 検証 (同じドメインなので確実に届く)
+  ↓
+  access_token を GitHub の token endpoint から取得
+  ↓
+  github_user_tokens テーブルに保存
+  ↓ 302 → /account?gh=connected
+  ↓
+完了
 ```
 
 ## 一度だけ必要な準備
@@ -21,62 +50,91 @@ Project Settings → Pull / Push ──────────────► g
 
 1. https://github.com/settings/applications/new
 2. 入力:
-   - **Application name**: `ganto`（任意）
-   - **Homepage URL**: `https://ganto-seven.vercel.app`（本番 URL）
-   - **Authorization callback URL**: Neon Auth が提示するコールバック URL
-     - 通常 `<NEON_AUTH_BASE_URL>/oauth/callback/github` の形
-     - 正確な URL は Neon Auth Console の **Providers → GitHub** ページに表示される
+   | 項目 | 値 |
+   |---|---|
+   | Application name | `ganto`（任意） |
+   | Homepage URL | `https://ganto-seven.vercel.app` |
+   | **Authorization callback URL** | `https://ganto-seven.vercel.app/api/github/oauth/callback` |
 3. **Register application**
-4. 表示された **Client ID** をコピー
+4. **Client ID** をコピー
 5. **Generate a new client secret** → secret をコピー（一度しか表示されない）
 
-### 2. Neon Auth Console で GitHub provider を有効化
+ローカル開発もしたい場合は同じ App で OK ですが、callback URL は 1 つしか登録できないので、開発時は本番 URL を使うか、別途 dev 用の OAuth App を作る形になります（推奨: dev 用に別 App）。
 
-1. Neon Console → 該当プロジェクト → **Auth** → **Providers / Configuration**
-2. GitHub provider を **Enable**
-3. Client ID と Client Secret を入力
-4. Scopes（要求する権限）:
-   - `read:project` — GitHub Projects v2 の読み取り
-   - `project` — Projects v2 の書き込み（push に必要）
-5. **Save**
+### 2. Vercel 環境変数を追加
 
-### 3. （任意）Preview / Local の URL もコールバック登録
+| 変数 | 値 |
+|---|---|
+| `GITHUB_OAUTH_CLIENT_ID` | Step 1.4 でコピーした Client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | Step 1.5 でコピーした Client Secret |
 
-OAuth App の Authorization callback URL は **1 つしか登録できません** が、Neon Auth は通常その 1 つで Production / Preview / Local 全てを処理します（Neon Auth がプロキシ）。
-Preview ごとに別の OAuth App を作る必要はありません。
+Vercel → Settings → Environment Variables で追加 → **Production と Preview 両方** にチェック。
+
+すでに設定済みの `APP_URL` が `https://ganto-seven.vercel.app` を指していることも確認。OAuth flow の redirect_uri はここから組み立てます。
+
+### 3. Redeploy
+
+env 追加後は再デプロイが必要（自動的に走るはず、走らなければ手動 redeploy）。
 
 ## 動作確認
 
-1. デプロイ後、ユーザーがログイン
+1. デプロイ後、ユーザーとして ganto にログイン
 2. 右上のメアド or 名前をクリック → `/account` ページへ
 3. **GitHub セクション** → **Connect GitHub** をクリック
-4. GitHub の認可画面へリダイレクト → Authorize
-5. ganto に戻る → 「Connected」が表示される
+4. GitHub の認可画面で以下の権限が要求される:
+   - Read access to projects
+   - Full control of projects
+   - Read access to email addresses
+5. **Authorize**
+6. ganto に戻ってきて「Connected as @<your-github-username>」が表示される
 
-接続したら:
-- プロジェクトの Settings → Storage mode を `GitHub Projects v2` に変更
+その後:
+- プロジェクトの Settings → Storage mode を `GitHub Projects v2` に
 - Owner と Project number を入力
-- **Pull from GitHub** / **Push to GitHub** ボタンが利用可能になる
+- **Pull from GitHub** / **Push to GitHub** ボタンが利用可能
 
 ## 接続を解除
 
 `/account` → GitHub セクション → **Disconnect**。
-解除後は同期 API が `412 GITHUB_NOT_CONNECTED` を返し、UI が「Connect GitHub first」を促します。
+DB の `github_user_tokens` 行が削除され、以降の同期 API は `412 GITHUB_NOT_CONNECTED` を返します。
+
+GitHub 側でアプリ自体を revoke したい場合は https://github.com/settings/applications から手動で remove access。
 
 ## トラブルシューティング
 
 | 症状 | 原因 / 対処 |
 |---|---|
-| Connect ボタンを押しても何も起きない | Neon Auth 側で GitHub provider が enable になってない |
-| GitHub の認可画面で「Application not found」 | OAuth App の Client ID が Neon Auth の設定と不一致 |
-| Authorize 後 redirect_uri error | OAuth App の callback URL と Neon Auth のコールバック URL が不一致 |
-| Pull/Push で 412 GITHUB_NOT_CONNECTED | ユーザーがまだ Connect していない |
-| Pull/Push で 400 「Could not load GitHub project」 | 接続済みアカウントが当該 Project にアクセス権を持っていない、または Owner/Number が間違い |
-| 「Status field not found」 warning | GitHub Project v2 に Status / Start / End フィールドが無い。GitHub Project の `+ Add field` から作成 |
+| Connect ボタンを押しても何も起きない | サーバー側ログを確認。`GITHUB_OAUTH_CLIENT_ID` 未設定が典型 |
+| `redirect_uri_mismatch` エラー | OAuth App の Authorization callback URL が `https://ganto-seven.vercel.app/api/github/oauth/callback` 完全一致になっているか確認 |
+| `?gh_error=state_mismatch` | ブラウザが cookie をブロックしている / 10 分以上経過 / 別タブで進行中。シークレットウィンドウで再試行 |
+| `?gh_error=exchange_failed` | GitHub 側で client_secret が不一致 or 期限切れ。secret を再生成 → Vercel env 更新 |
+| Pull/Push で 412 GITHUB_NOT_CONNECTED | `/account` で Connect を先に |
+| 「Could not load GitHub project」 | 接続済みアカウントが当該 Project にアクセス権なし、または Owner/Number 間違い |
 
-## セキュリティ
+## セキュリティノート
 
-- access_token は **Neon Auth が保管**（DB の `neon_auth.account` テーブル）
-- アプリ側コードは読み取るだけで生 token を扱わない
-- ユーザーが Disconnect すれば即座に同期不可になる
-- 監査ログに `github.sync.pull` / `github.sync.push` が記録される（誰がいつ実行したか追跡可能）
+- `access_token` は `github_user_tokens` テーブルに **plain text 保存**
+  - Neon の DB は AWS の at-rest 暗号化が効いている
+  - アプリレイヤで user_id による row-locking
+  - application-level 暗号化は将来の課題
+- `state` cookie は `HttpOnly` + `SameSite=Lax` + production では `Secure`
+- 監査ログ: `github.connect` / `github.disconnect` を記録（誰がいつ操作したか追跡可能）
+
+## DB スキーマ
+
+```sql
+github_user_tokens (
+  id                uuid PRIMARY KEY
+  user_id           text NOT NULL UNIQUE  -- Neon Auth user id
+  github_user_id    text NOT NULL         -- GitHub numeric id
+  github_login      text NOT NULL         -- GitHub username
+  access_token      text NOT NULL
+  refresh_token     text                  -- 通常 GitHub OAuth では NULL
+  scope             text                  -- granted scopes
+  expires_at        timestamptz           -- NULL なら無期限
+  created_at        timestamptz NOT NULL
+  updated_at        timestamptz NOT NULL
+)
+```
+
+一人一行。re-link 時は DELETE + INSERT で上書き（access_token を確実に更新）。

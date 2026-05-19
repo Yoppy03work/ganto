@@ -71,48 +71,54 @@ export async function POST(
   const ids = items.map((i) => i.taskId);
 
   try {
-    // Run the whole reorder inside one transaction. We pre-verify every task's
-    // lockVersion matches, and only then bump positions. If ANY task fails the
-    // check, the entire reorder is rolled back — no partial-success state
-    // where half the rows have moved.
-    await db.transaction(async (tx) => {
-      const rows = await tx
-        .select({
-          id: schema.tasks.id,
-          lockVersion: schema.tasks.lockVersion,
-        })
-        .from(schema.tasks)
-        .where(
-          and(
-            eq(schema.tasks.projectId, projectId),
-            inArray(schema.tasks.id, ids),
-            isNull(schema.tasks.deletedAt)
-          )
-        );
-      if (rows.length !== ids.length) {
-        // Throwing a generic Error rolls back the transaction; the catch
-        // block below distinguishes our known cases.
-        throw new Error("MISSING_TASKS");
+    // We cannot wrap the reorder in `db.transaction(...)` because the project
+    // uses Drizzle's neon-http driver, which does not support multi-statement
+    // transactions (see lib/projects/create.ts for the same caveat).
+    //
+    // Correctness model without a transaction:
+    //   1. Pre-fetch current lockVersions for fast-fail on stale clients.
+    //   2. Each UPDATE re-asserts `lock_version = expectedLockVersion` and
+    //      uses `.returning()`. `ensureUpdated()` throws ConflictError when
+    //      zero rows match — that protects every individual row from being
+    //      silently trampled by a concurrent edit (the original goal of
+    //      Epic 3).
+    //
+    // What we lose by dropping the transaction: if the loop aborts at task
+    // #N because a concurrent edit slipped in, tasks #0..N-1 already have
+    // their new positions. The user gets a 409 + auto-refresh; they see the
+    // partial reorder and can drag again. This is acceptable because:
+    //   - The lockVersion guard on every UPDATE means we cannot OVERWRITE
+    //     anyone else's edits.
+    //   - Reorder is a low-frequency UX operation, not a money-sensitive one.
+    //   - Switching to neon-serverless (WebSocket) just for atomic reorder
+    //     would force every route into a heavier connection model.
+    const rows = await db
+      .select({
+        id: schema.tasks.id,
+        lockVersion: schema.tasks.lockVersion,
+      })
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.projectId, projectId),
+          inArray(schema.tasks.id, ids),
+          isNull(schema.tasks.deletedAt)
+        )
+      );
+    if (rows.length !== ids.length) {
+      throw new Error("MISSING_TASKS");
+    }
+    const byId = new Map(rows.map((r) => [r.id, r.lockVersion] as const));
+    for (const it of items) {
+      if (byId.get(it.taskId) !== it.expectedLockVersion) {
+        throw new ConflictError();
       }
-      const byId = new Map(rows.map((r) => [r.id, r.lockVersion] as const));
-      for (const it of items) {
-        if (byId.get(it.taskId) !== it.expectedLockVersion) {
-          throw new ConflictError();
-        }
-      }
-      // Re-number positions in dense increments of 10 so subsequent inline
-      // inserts have room (10, 20, 30, …) without immediate renumber.
-      //
-      // The pre-check above is NOT sufficient on its own under READ COMMITTED
-      // isolation: a sibling transaction that committed between our SELECT
-      // and our UPDATEs could have bumped a row's lockVersion, and our UPDATE
-      // (filtered only by id) would overwrite it silently.
-      // Each UPDATE therefore re-asserts the expected lockVersion in its
-      // WHERE clause and we throw ConflictError if any single update
-      // returned zero rows — the surrounding transaction rolls back, so the
-      // entire reorder is atomic even when racing with concurrent edits.
+    }
+    // Re-number positions in dense increments of 10 so subsequent inline
+    // inserts have room (10, 20, 30, …) without immediate renumber.
+    {
       for (let i = 0; i < items.length; i++) {
-        const updated = await tx
+        const updated = await db
           .update(schema.tasks)
           .set({
             position: (i + 1) * 10,
@@ -130,7 +136,7 @@ export async function POST(
           .returning({ id: schema.tasks.id });
         ensureUpdated(updated);
       }
-    });
+    }
   } catch (e) {
     const conflict = conflictResponse(e);
     if (conflict) return conflict;
