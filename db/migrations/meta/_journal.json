@@ -15,6 +15,13 @@
       "when": 1778605045950,
       "tag": "0001_sticky_vanisher",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779154242086,
+      "tag": "0002_right_madame_hydra",
+      "breakpoints": true
     }
   ]
 }

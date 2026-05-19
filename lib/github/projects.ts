@@ -1,5 +1,5 @@
 import "server-only";
-import { getGithubClient } from "./client";
+import { getGithubClientForUser } from "./client";
 
 /**
  * Fetch a ProjectV2's items + field values, trying user(login) first and
@@ -111,8 +111,14 @@ const PROJECT_QUERY_ORG = PROJECT_QUERY_USER.replace("user(login:", "organizatio
 export async function fetchProjectV2(opts: {
   owner: string;
   number: number;
+  /**
+   * ganto user id (Neon Auth UUID) whose linked GitHub access token should be
+   * used for the GraphQL calls. Throws GitHubNotConnectedError if the user
+   * has not linked GitHub yet.
+   */
+  actorId: string;
 }): Promise<ProjectFetchResult | null> {
-  const client = getGithubClient();
+  const client = await getGithubClientForUser(opts.actorId);
   // Try user first, then organization.
   type Resp = {
     user?: { projectV2: ProjectFetchResult | null };

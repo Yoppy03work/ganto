@@ -14,7 +14,7 @@ ganto を本番環境（Vercel + Neon + Sentry）で安全に運用するため�
 - [ ] `APP_URL` が本番ドメイン
 - [ ] `ALLOW_PROJECT_DELETE=false`（必ず false でデプロイすること）
 - [ ] `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_DSN` / `SENTRY_AUTH_TOKEN` 設定済み
-- [ ] `GITHUB_PAT` を使うなら `project` read+write scope 付き
+- [ ] Neon Auth Console で **GitHub provider が有効化**されている（GitHub Projects 同期を使う場合のみ。`docs/GITHUB-OAUTH.md` 参照）
 
 ### 2. Neon Auth 設定
 - [ ] Allowed Origins に本番 URL を追加

@@ -1,6 +1,5 @@
 import {
   pgTable,
-  pgSchema,
   uuid,
   text,
   timestamp,
@@ -16,24 +15,14 @@ import {
 import { relations } from "drizzle-orm";
 
 /**
- * Users are managed by Neon Auth and stored in `neon_auth.user`. We mirror
- * that table here (read-only from our perspective) so we can join against
- * memberships, comments, etc. without raw SQL. We do NOT add foreign keys
- * to it — Neon Auth owns the table's lifecycle.
+ * Re-export read-only mirrors of Neon Auth's `neon_auth.user` and
+ * `neon_auth.account` tables. The actual table definitions live in
+ * `./neon-auth-mirror.ts` which is **not** referenced by `drizzle.config.ts`
+ * — that keeps Drizzle Kit's diff blind to Auth-owned tables, so a future
+ * `pnpm db:generate` won't emit `CREATE TABLE neon_auth.*` statements that
+ * would conflict with the live tables Neon Auth manages.
  */
-export const neonAuthSchema = pgSchema("neon_auth");
-
-export const neonUsers = neonAuthSchema.table("user", {
-  id: uuid("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull(),
-  emailVerified: boolean("emailVerified").notNull(),
-  image: text("image"),
-  createdAt: timestamp("createdAt", { withTimezone: true }).notNull(),
-  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull(),
-  role: text("role"),
-  banned: boolean("banned"),
-});
+export { neonAuthSchema, neonUsers, neonAccounts } from "./neon-auth-mirror";
 
 // ---------- Enums ----------
 
