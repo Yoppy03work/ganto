@@ -46,7 +46,14 @@ Vercel の Project Settings → Environment Variables に以下を入れる。
 | `ALLOW_PROJECT_DELETE` | プロジェクト hard delete を許可するか。**通常 `false`**（緊急時のみ一時的に `true`） |
 
 **`AUTH_PASSWORD_HASH` / `AUTH_SECRET` は不要** (旧 shared password 認証の名残で未使用)。
-**`GITHUB_PAT` も不要** — GitHub Projects v2 同期は v3 で **per-user OAuth** に移行済み。各ユーザーが `/account` から自分の GitHub アカウントを Connect します（後述）。
+**`GITHUB_PAT` も不要** — GitHub Projects v2 同期は **ganto-managed OAuth** に移行済み。各ユーザーが `/account` から自分の GitHub アカウントを Connect します。
+
+GitHub Projects v2 同期を使う場合に追加で必要な env vars (詳細は `docs/GITHUB-OAUTH.md`):
+
+| 変数 | 値 |
+|---|---|
+| `GITHUB_OAUTH_CLIENT_ID` | ganto 用 GitHub OAuth App の Client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | 同上の Client Secret |
 
 **メール配信について**: パスワードリセットは **Neon Auth の OTP メール配信**を利用するため、本リリースでは Resend など外部メールプロバイダの設定は不要。詳細は `docs/EMAIL.md` 参照。
 （`resend` パッケージは将来の通知機能用に pre-installed 済みだが、現時点では参照されていない。）
