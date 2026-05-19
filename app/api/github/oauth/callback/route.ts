@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { requireCurrentUser } from "@/lib/auth/server";
 import {
@@ -64,26 +63,38 @@ export async function GET(req: NextRequest) {
     const tokens = await exchangeCodeForToken(code);
     const ghUser = await fetchGitHubUser(tokens.access_token);
 
-    // Upsert via DELETE + INSERT inside a transaction so we never end up
-    // with a half-written row. Drizzle has onConflict but the table has a
-    // unique on user_id, so a deterministic delete-then-insert is simpler
-    // and keeps the access_token field always overwritten.
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(schema.githubUserTokens)
-        .where(eq(schema.githubUserTokens.userId, user.id));
-      await tx.insert(schema.githubUserTokens).values({
+    // Upsert with `onConflictDoUpdate` keyed on the UNIQUE on `user_id`.
+    // We can't use `db.transaction()` here because the project uses Neon's
+    // HTTP driver (`drizzle-orm/neon-http`), which doesn't support
+    // multi-statement transactions — single-statement upsert is the
+    // right primitive on this driver.
+    const now = new Date();
+    const expiresAt = tokens.expires_in
+      ? new Date(Date.now() + tokens.expires_in * 1000)
+      : null;
+    await db
+      .insert(schema.githubUserTokens)
+      .values({
         userId: user.id,
         githubUserId: String(ghUser.id),
         githubLogin: ghUser.login,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token ?? null,
         scope: tokens.scope ?? null,
-        expiresAt: tokens.expires_in
-          ? new Date(Date.now() + tokens.expires_in * 1000)
-          : null,
+        expiresAt,
+      })
+      .onConflictDoUpdate({
+        target: schema.githubUserTokens.userId,
+        set: {
+          githubUserId: String(ghUser.id),
+          githubLogin: ghUser.login,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token ?? null,
+          scope: tokens.scope ?? null,
+          expiresAt,
+          updatedAt: now,
+        },
       });
-    });
 
     await recordAudit({
       projectId: null,
