@@ -1,6 +1,5 @@
 import {
   pgTable,
-  pgSchema,
   uuid,
   text,
   timestamp,
@@ -16,54 +15,14 @@ import {
 import { relations } from "drizzle-orm";
 
 /**
- * Users are managed by Neon Auth and stored in `neon_auth.user`. We mirror
- * that table here (read-only from our perspective) so we can join against
- * memberships, comments, etc. without raw SQL. We do NOT add foreign keys
- * to it — Neon Auth owns the table's lifecycle.
+ * Re-export read-only mirrors of Neon Auth's `neon_auth.user` and
+ * `neon_auth.account` tables. The actual table definitions live in
+ * `./neon-auth-mirror.ts` which is **not** referenced by `drizzle.config.ts`
+ * — that keeps Drizzle Kit's diff blind to Auth-owned tables, so a future
+ * `pnpm db:generate` won't emit `CREATE TABLE neon_auth.*` statements that
+ * would conflict with the live tables Neon Auth manages.
  */
-export const neonAuthSchema = pgSchema("neon_auth");
-
-export const neonUsers = neonAuthSchema.table("user", {
-  id: uuid("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull(),
-  emailVerified: boolean("emailVerified").notNull(),
-  image: text("image"),
-  createdAt: timestamp("createdAt", { withTimezone: true }).notNull(),
-  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull(),
-  role: text("role"),
-  banned: boolean("banned"),
-});
-
-/**
- * Mirrors `neon_auth.account` (Better Auth's linked-provider table). Read-only
- * from our side — Neon Auth owns the lifecycle (insert/update/delete on
- * sign-in, linkSocial, unlinkAccount). We mirror it so server code can look
- * up a user's OAuth access tokens for downstream API calls (e.g. each user's
- * personal GitHub token for Projects v2 sync).
- *
- * Only the columns we actually read are declared.
- */
-export const neonAccounts = neonAuthSchema.table("account", {
-  id: uuid("id").primaryKey(),
-  // FK target type is text because neon_auth.user.id is uuid but the Better
-  // Auth schema stores user IDs as text in `account.userId`. Cross-cast at
-  // query time when joining (`::uuid`) — matches the pattern used for
-  // memberships → neon_users.
-  userId: text("userId").notNull(),
-  /** "github" | "google" | "credential" (email/password) | ... */
-  providerId: text("providerId").notNull(),
-  /** Provider-side stable user id (e.g. GitHub user numeric id as string). */
-  accountId: text("accountId").notNull(),
-  accessToken: text("accessToken"),
-  refreshToken: text("refreshToken"),
-  idToken: text("idToken"),
-  accessTokenExpiresAt: timestamp("accessTokenExpiresAt", { withTimezone: true }),
-  refreshTokenExpiresAt: timestamp("refreshTokenExpiresAt", { withTimezone: true }),
-  scope: text("scope"),
-  createdAt: timestamp("createdAt", { withTimezone: true }).notNull(),
-  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull(),
-});
+export { neonAuthSchema, neonUsers, neonAccounts } from "./neon-auth-mirror";
 
 // ---------- Enums ----------
 
