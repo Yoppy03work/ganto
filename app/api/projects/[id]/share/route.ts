@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/auth/server";
-import { getMembership } from "@/lib/projects/members";
 import { hasCapability } from "@/lib/auth/permission";
 import { createShareToken, listShareTokens } from "@/lib/projects/share";
 
 export const runtime = "nodejs";
 
+// Listing raw tokens exposes the public read-only URLs, so reads are gated by
+// the same `project.settings` capability as creation — a plain member must not
+// be able to extract and redistribute existing share links.
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await params;
   const user = await requireCurrentUser();
-  const membership = await getMembership(user.id, projectId);
-  if (!membership) {
+  if (!(await hasCapability(user.id, projectId, "project.settings"))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const tokens = await listShareTokens(projectId);
@@ -41,6 +42,9 @@ export async function POST(
   if (!(await hasCapability(user.id, projectId, "project.settings"))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const { token } = await createShareToken({ projectId, actorId: user.id });
-  return NextResponse.json({ token }, { status: 201 });
+  const { id, token, createdAt } = await createShareToken({ projectId, actorId: user.id });
+  return NextResponse.json(
+    { id, token, createdAt: createdAt.toISOString() },
+    { status: 201 }
+  );
 }
