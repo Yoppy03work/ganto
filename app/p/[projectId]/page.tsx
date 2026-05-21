@@ -8,6 +8,7 @@ import { listProjectMembers } from "@/lib/projects/members";
 import { listProjectDependencies } from "@/lib/projects/dependencies";
 import { listProjectMilestones } from "@/lib/projects/milestones";
 import { listProjectBaselines } from "@/lib/projects/baselines";
+import { listProjectTemplates } from "@/lib/projects/templates";
 import { hasCapability } from "@/lib/auth/permission";
 import { Button } from "@/components/ui/button";
 import { GanttScreen } from "@/components/gantt/gantt-screen";
@@ -40,7 +41,7 @@ export default async function ProjectPage({
   if (rows.length === 0) notFound();
   const { project, role } = rows[0];
 
-  const [tasksRaw, canCreate, membersRaw, deps, milestonesRaw, baselines] =
+  const [tasksRaw, canCreate, membersRaw, deps, milestonesRaw, baselines, templatesRaw] =
     await Promise.all([
       listProjectTasks(projectId),
       hasCapability(user.id, projectId, "task.create"),
@@ -48,6 +49,7 @@ export default async function ProjectPage({
       listProjectDependencies(projectId),
       listProjectMilestones(projectId),
       listProjectBaselines(projectId),
+      listProjectTemplates(projectId),
     ]);
 
   const milestones = milestonesRaw.map((m) => ({
@@ -61,6 +63,12 @@ export default async function ProjectPage({
     id: b.id,
     name: b.name,
     createdAt: b.createdAt.toISOString(),
+  }));
+  const templates = templatesRaw.map((t) => ({
+    id: t.id,
+    name: t.name,
+    items: t.items.map((it) => ({ title: it.title })),
+    createdAt: t.createdAt.toISOString(),
   }));
 
   const members = membersRaw.map((m) => ({
@@ -144,6 +152,7 @@ export default async function ProjectPage({
         currentUserId={user.id}
         initialMilestones={milestones}
         baselines={baselineList}
+        templates={templates}
       />
     </div>
   );

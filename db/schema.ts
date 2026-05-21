@@ -337,6 +337,35 @@ export const baselineTasks = pgTable(
   (t) => [primaryKey({ columns: [t.baselineId, t.taskId] })]
 );
 
+// ---------- Task templates ----------
+
+// A reusable set of tasks. `items` is a JSON array of task shapes with day
+// offsets relative to an anchor date, so applying a template at date D creates
+// tasks at D + offset. Created either by hand or snapshotted from current
+// tasks.
+export type TemplateItem = {
+  title: string;
+  type: string | null;
+  status: string;
+  startOffsetDays: number;
+  endOffsetDays: number;
+};
+
+export const taskTemplates = pgTable(
+  "task_templates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    items: jsonb("items").$type<TemplateItem[]>().notNull(),
+    createdBy: text("created_by"), // Neon Auth user id
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("task_templates_project_idx").on(t.projectId)]
+);
+
 // ---------- Attachments ----------
 
 // File attachments on a task, stored in Vercel Blob. We keep only metadata +

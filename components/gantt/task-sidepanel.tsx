@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { TASK_STATUSES, TASK_TYPES, type GanttTaskDTO } from "@/lib/gantt/types";
 import { TaskHistory } from "./task-history";
 import { TaskAttachments } from "./task-attachments";
+import { TaskRepeat } from "./task-repeat";
 
 type Member = {
   userId: string;
@@ -45,6 +46,7 @@ export function TaskSidepanel({
   onChanged,
   onDeleted,
   onDepsChanged,
+  onRefresh,
 }: {
   projectId: string;
   task: GanttTaskDTO;
@@ -57,6 +59,7 @@ export function TaskSidepanel({
   onChanged: (patch: Partial<GanttTaskDTO>) => void;
   onDeleted: () => void;
   onDepsChanged: (deps: { fromTaskId: string; toTaskId: string }[]) => void;
+  onRefresh?: () => void;
 }) {
   const [title, setTitle] = useState(task.title);
   const [status, setStatus] = useState(task.status);
@@ -443,15 +446,25 @@ export function TaskSidepanel({
         )}
 
         {canEdit && (
-          <div className="pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={deleteTask}
-              disabled={savingField === "delete"}
-            >
-              {savingField === "delete" ? "Deleting..." : "Delete task"}
-            </Button>
+          <div className="pt-2 space-y-3">
+            <TaskRepeat
+              projectId={projectId}
+              taskId={task.id}
+              onRepeated={() => {
+                onRefresh?.();
+                onClose();
+              }}
+            />
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={deleteTask}
+                disabled={savingField === "delete"}
+              >
+                {savingField === "delete" ? "Deleting..." : "Delete task"}
+              </Button>
+            </div>
           </div>
         )}
 

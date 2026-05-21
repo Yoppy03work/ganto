@@ -38,6 +38,7 @@ import {
   BaselineControls,
   type BaselineMeta,
 } from "./pm-controls";
+import { TemplatesManager } from "./templates-manager";
 import {
   GanttFilterBar,
   applyFilter,
@@ -80,6 +81,7 @@ export function GanttScreen({
   currentUserId,
   initialMilestones = [],
   baselines: initialBaselines = [],
+  templates = [],
 }: {
   projectId: string;
   initialTasks: GanttTaskDTO[];
@@ -89,6 +91,7 @@ export function GanttScreen({
   currentUserId: string;
   initialMilestones?: Milestone[];
   baselines?: BaselineMeta[];
+  templates?: { id: string; name: string; items: { title: string }[]; createdAt: string }[];
 }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
@@ -99,6 +102,7 @@ export function GanttScreen({
   const [rowDrag, setRowDrag] = useState<RowDrag>({ kind: "idle" });
   const [showArrows, setShowArrows] = useState(true);
   const [showCp, setShowCp] = useState(true);
+  const [autoShift, setAutoShift] = useState(false);
   const [scale, setScale] = useState<ScaleKey>("Day");
   const pxPerDay = SCALE_PX_PER_DAY[scale];
 
@@ -341,6 +345,9 @@ export function GanttScreen({
       }
     }
     const taskId = drag.taskId;
+    // The downstream shift delta is how far the END moved: a "move" or a
+    // right-resize shifts the end by `days`; a left-resize leaves the end put.
+    const endDelta = drag.kind === "left" ? 0 : days;
     setDrag({ kind: "none" });
     setTasks((arr) =>
       arr.map((x) =>
@@ -349,10 +356,15 @@ export function GanttScreen({
           : x
       )
     );
-    void persistDates(taskId, newStart, newEnd);
+    void persistDates(taskId, newStart, newEnd, endDelta);
   }
 
-  async function persistDates(taskId: string, startAt: Date, endAt: Date) {
+  async function persistDates(
+    taskId: string,
+    startAt: Date,
+    endAt: Date,
+    endDeltaDays = 0
+  ) {
     // Capture the current lockVersion BEFORE the request so we can detect a
     // racing concurrent edit. We must read it at call time (not closure-captured)
     // because the local `tasks` may have been re-rendered by a successful
@@ -387,6 +399,25 @@ export function GanttScreen({
         setTasks((arr) =>
           arr.map((x) => (x.id === taskId ? { ...x, lockVersion: newVer } : x))
         );
+      }
+      // Auto-shift downstream dependents when enabled and the end moved.
+      if (autoShift && endDeltaDays !== 0) {
+        const cas = await fetch(
+          `/api/projects/${projectId}/tasks/${taskId}/cascade-shift`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ deltaDays: endDeltaDays }),
+          }
+        );
+        if (cas.ok) {
+          const r = (await cas.json()) as { shifted: number };
+          if (r.shifted > 0) {
+            toast.success(`${r.shifted} 件の後続タスクをシフトしました`);
+            await refresh();
+          }
+        }
       }
     } catch {
       await refresh();
@@ -618,6 +649,17 @@ export function GanttScreen({
             />
             Critical path
           </label>
+          <label
+            className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer"
+            title="タスクの日付を動かすと後続の依存タスクも一緒にずれます"
+          >
+            <input
+              type="checkbox"
+              checked={autoShift}
+              onChange={(e) => setAutoShift(e.target.checked)}
+            />
+            Auto-shift
+          </label>
         </div>
         <div className="flex items-center gap-2">
           <GanttFilterBar
@@ -625,6 +667,12 @@ export function GanttScreen({
             onChange={setFilter}
             members={members}
             inputRef={searchInputRef}
+          />
+          <TemplatesManager
+            projectId={projectId}
+            initial={templates}
+            canEdit={canCreate}
+            onApplied={() => void refresh()}
           />
           <ImportExportMenu
             projectId={projectId}
@@ -897,6 +945,7 @@ export function GanttScreen({
                 setSelected(null);
               }}
               onDepsChanged={setDeps}
+              onRefresh={() => void refresh()}
             />
           );
         })()}
