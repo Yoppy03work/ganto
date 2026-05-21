@@ -22,11 +22,21 @@ function isoDay(d: Date): string {
 export function NewTaskDialog({
   projectId,
   onCreated,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  hideTrigger = false,
 }: {
   projectId: string;
   onCreated: () => void;
+  /** Optional controlled open state (for keyboard-shortcut triggering). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the built-in "+ New task" trigger when controlling externally. */
+  hideTrigger?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = controlledOnOpenChange ?? setUncontrolledOpen;
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState<string>("Todo");
   const [type, setType] = useState<string>("Feature");
@@ -88,9 +98,11 @@ export function NewTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-      <DialogTrigger asChild>
-        <Button>+ New task</Button>
-      </DialogTrigger>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          <Button>+ New task</Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>New task</DialogTitle>

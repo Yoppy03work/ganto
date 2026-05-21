@@ -1,5 +1,5 @@
 import "server-only";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 
 export type AuditEntry = {
@@ -39,6 +39,61 @@ export async function listProjectAudit(
       sql`${schema.auditLog.actorId}::uuid = ${schema.neonUsers.id}`
     )
     .where(eq(schema.auditLog.projectId, projectId))
+    .orderBy(desc(schema.auditLog.createdAt))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    action: r.action,
+    targetType: r.targetType,
+    targetId: r.targetId,
+    before: r.before,
+    after: r.after,
+    createdAt: r.createdAt,
+    actorId: r.actorId,
+    actorName: r.actorName,
+    actorImage: r.actorImage,
+  }));
+}
+
+/**
+ * Audit entries for a single task — powers the "History" tab in the task
+ * sidepanel. Matches on (target_type = 'task', target_id = taskId).
+ *
+ * Note: there's no DB index on (target_type, target_id) yet; for typical
+ * per-task history sizes the project_id index + filter is fine. Add a
+ * composite index if audit_log grows very large.
+ */
+export async function listTaskAudit(
+  projectId: string,
+  taskId: string,
+  limit = 100
+): Promise<AuditEntry[]> {
+  const rows = await db
+    .select({
+      id: schema.auditLog.id,
+      action: schema.auditLog.action,
+      targetType: schema.auditLog.targetType,
+      targetId: schema.auditLog.targetId,
+      before: schema.auditLog.before,
+      after: schema.auditLog.after,
+      createdAt: schema.auditLog.createdAt,
+      actorId: schema.auditLog.actorId,
+      actorName: schema.neonUsers.name,
+      actorImage: schema.neonUsers.image,
+    })
+    .from(schema.auditLog)
+    .leftJoin(
+      schema.neonUsers,
+      sql`${schema.auditLog.actorId}::uuid = ${schema.neonUsers.id}`
+    )
+    .where(
+      and(
+        eq(schema.auditLog.projectId, projectId),
+        eq(schema.auditLog.targetType, "task"),
+        eq(schema.auditLog.targetId, taskId)
+      )
+    )
     .orderBy(desc(schema.auditLog.createdAt))
     .limit(limit);
 

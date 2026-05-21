@@ -1,8 +1,14 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { GanttTaskDTO } from "@/lib/gantt/types";
 import { BAR_H, ROW_H } from "@/lib/gantt/date";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 const STATUS_CLS: Record<string, string> = {
   Todo:           "gantt-bar-todo",
@@ -19,6 +25,8 @@ export type GanttBarProps = {
   w: number;
   state?: "normal" | "hover" | "selected" | "dragging" | "resizing";
   onCriticalPath?: boolean;
+  /** Rich hover tooltip content. When omitted, no tooltip is shown. */
+  tooltip?: ReactNode;
   onPointerDown?: (
     e: React.PointerEvent<HTMLDivElement>,
     handle: "move" | "left" | "right"
@@ -31,6 +39,7 @@ export function GanttBar({
   w,
   state = "normal",
   onCriticalPath = false,
+  tooltip,
   onPointerDown,
 }: GanttBarProps) {
   const top = (ROW_H - BAR_H) / 2;
@@ -57,7 +66,7 @@ export function GanttBar({
   const minWidth = 8;
   const widthPx = Math.max(minWidth, w);
 
-  return (
+  const bar = (
     <div
       onPointerDown={(e) => onPointerDown?.(e, "move")}
       className={cn(
@@ -134,5 +143,16 @@ export function GanttBar({
         }}
       />
     </div>
+  );
+
+  if (!tooltip) return bar;
+
+  // Wrap in a hover tooltip. Radix won't open while the pointer is held down
+  // (during a drag), so this doesn't interfere with move/resize.
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{bar}</TooltipTrigger>
+      <TooltipContent side="top">{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
