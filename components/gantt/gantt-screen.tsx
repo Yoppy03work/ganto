@@ -7,6 +7,8 @@ import {
   buildDayHeader,
   buildWeekHeader,
   buildMonthHeader,
+  buildQuarterHeader,
+  buildYearHeader,
   autoWindow,
   dateToPx,
   todayPx,
@@ -195,6 +197,14 @@ export function GanttScreen({
   );
   const monthHeader = useMemo(
     () => buildMonthHeader(origin, windowDays, pxPerDay),
+    [origin, windowDays, pxPerDay]
+  );
+  const quarterHeader = useMemo(
+    () => buildQuarterHeader(origin, windowDays, pxPerDay),
+    [origin, windowDays, pxPerDay]
+  );
+  const yearHeader = useMemo(
+    () => buildYearHeader(origin, windowDays, pxPerDay),
     [origin, windowDays, pxPerDay]
   );
 
@@ -499,7 +509,7 @@ export function GanttScreen({
       <header className="h-12 border-b border-border flex items-center justify-between px-4 gap-3 flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-md border border-input bg-background p-0.5 h-7">
-            {(["Day", "Week", "Month"] as const).map((s) => (
+            {(["Day", "Week", "Month", "Quarter", "Year"] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setScale(s)}
@@ -670,11 +680,25 @@ export function GanttScreen({
               months={weekHeader.months}
               totalWidth={totalWidth}
             />
-          ) : (
+          ) : scale === "Month" ? (
             <DateHeader
               kind="Month"
               months={monthHeader.months}
               years={monthHeader.years}
+              totalWidth={totalWidth}
+            />
+          ) : scale === "Quarter" ? (
+            <DateHeader
+              kind="Quarter"
+              months={quarterHeader.months}
+              quarters={quarterHeader.quarters}
+              totalWidth={totalWidth}
+            />
+          ) : (
+            <DateHeader
+              kind="Year"
+              quarters={yearHeader.quarters}
+              years={yearHeader.years}
               totalWidth={totalWidth}
             />
           )}
