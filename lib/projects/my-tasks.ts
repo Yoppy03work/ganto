@@ -31,6 +31,17 @@ export async function listMyTasks(userId: string): Promise<MyTaskRow[]> {
     .from(schema.taskAssignees)
     .innerJoin(schema.tasks, eq(schema.tasks.id, schema.taskAssignees.taskId))
     .innerJoin(schema.projects, eq(schema.projects.id, schema.tasks.projectId))
+    // Scope to projects the user CURRENTLY belongs to. Member removal deletes
+    // the membership but leaves task_assignee rows, so without this join a
+    // removed user keeps seeing task titles/dates from that project.
+    .innerJoin(
+      schema.memberships,
+      and(
+        eq(schema.memberships.projectId, schema.tasks.projectId),
+        eq(schema.memberships.userId, userId),
+        eq(schema.memberships.status, "active")
+      )
+    )
     .where(
       and(
         eq(schema.taskAssignees.userId, userId),
