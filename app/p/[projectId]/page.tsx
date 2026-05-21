@@ -12,6 +12,7 @@ import { listProjectTemplates } from "@/lib/projects/templates";
 import { listProjectsForUser } from "@/lib/projects/create";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { hasCapability } from "@/lib/auth/permission";
+import { filterVisibleTasks } from "@/lib/gantt/visibility";
 import { Button } from "@/components/ui/button";
 import { GanttScreen } from "@/components/gantt/gantt-screen";
 import { NotificationBell } from "@/components/notification-bell";
@@ -83,15 +84,7 @@ export default async function ProjectPage({
   }));
 
   // Apply visibility filter (mirrors API logic for the initial server render).
-  const filtered = tasksRaw.filter((t) => {
-    if (role.name === "Owner" || role.name === "Admin") return true;
-    if (t.visibility === "all") return true;
-    if (t.visibility === "members" && role.name !== "Viewer") return true;
-    if (t.visibility === "private") {
-      return t.createdBy === user.id || t.assignees.some((a) => a.userId === user.id);
-    }
-    return false;
-  });
+  const filtered = filterVisibleTasks(tasksRaw, role.name, user.id);
 
   const tasks: GanttTaskDTO[] = filtered.map((t) => ({
     id: t.id,

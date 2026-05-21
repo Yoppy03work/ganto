@@ -18,6 +18,11 @@
 **全ての mutation 系ルートは 必ず `requireCurrentUser()` + capability 検証を通すこと。**
 監査は route ではなく **lib 関数内**で記録するものが多い（例: `lib/projects/share.ts` が `share.create` / `share.revoke`）。
 
+**soft-deleted（Trash）プロジェクトのガードは capability チョークポイントで一元化**:
+`getMembershipPermissions` が `projects.deletedAt IS NULL` を強制するため、`hasCapability` /
+`hasCapabilityFor` を通す全ルート（= 全 mutation）は trashed プロジェクトに対して自動的に 403 になる。
+唯一 `/api/projects/[id]/restore` だけが `includeDeleted: true` を渡して例外的に動作する。
+
 ## ルート一覧（2026-05-21 時点）
 
 ### Projects
