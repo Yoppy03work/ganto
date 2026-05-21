@@ -43,7 +43,6 @@ Vercel の Project Settings → Environment Variables に以下を入れる。
 | `SENTRY_AUTH_TOKEN` | Sentry → Account → Auth Tokens（source-maps upload 用） |
 | `SENTRY_ORG` | Sentry の Organization slug |
 | `SENTRY_PROJECT` | Sentry の Project slug |
-| `ALLOW_PROJECT_DELETE` | プロジェクト hard delete を許可するか。**通常 `false`**（緊急時のみ一時的に `true`） |
 | `BLOB_READ_WRITE_TOKEN` | 任意。Vercel Blob ストレージのトークン（タスクのファイル添付用）。未設定なら添付機能が「ストレージ未設定」で無効化される（fail-soft） |
 | `RESEND_API_KEY` / `EMAIL_FROM` | 任意。@メンション / アサイン通知のメール送信用。未設定なら in-app 通知のみ（メールは no-op） |
 

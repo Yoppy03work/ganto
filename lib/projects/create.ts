@@ -1,5 +1,5 @@
 import "server-only";
-import { isNull, eq, inArray } from "drizzle-orm";
+import { isNull, eq, and, inArray } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { recordAudit } from "@/lib/audit/log";
 import { seedSampleTasks } from "./sample-tasks";
@@ -131,7 +131,13 @@ export async function listProjectsForUser(userId: string) {
     .from(schema.memberships)
     .innerJoin(schema.projects, eq(schema.projects.id, schema.memberships.projectId))
     .innerJoin(schema.roles, eq(schema.roles.id, schema.memberships.roleId))
-    .where(eq(schema.memberships.userId, userId));
+    .where(
+      and(
+        eq(schema.memberships.userId, userId),
+        // Hide soft-deleted projects from the list / switcher.
+        isNull(schema.projects.deletedAt)
+      )
+    );
 
   // newest-joined first
   rows.sort((a, b) => b.joinedAt.getTime() - a.joinedAt.getTime());

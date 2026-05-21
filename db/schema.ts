@@ -48,6 +48,10 @@ export const projects = pgTable("projects", {
   // Optimistic concurrency control. Every PATCH on this row must match the
   // expected lockVersion or the request is rejected with 409 Conflict.
   lockVersion: integer("lock_version").default(0).notNull(),
+  // Soft delete. NULL = active; non-NULL = moved to project Trash, recoverable.
+  // Replaces the old ALLOW_PROJECT_DELETE hard-delete gate.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedByUserId: text("deleted_by_user_id"), // Neon Auth user id
 });
 
 // ---------- Roles & Permissions ----------
