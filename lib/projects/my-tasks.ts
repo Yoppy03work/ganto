@@ -45,7 +45,10 @@ export async function listMyTasks(userId: string): Promise<MyTaskRow[]> {
     .where(
       and(
         eq(schema.taskAssignees.userId, userId),
-        isNull(schema.tasks.deletedAt)
+        isNull(schema.tasks.deletedAt),
+        // Hide tasks from soft-deleted (trashed) projects — those project pages
+        // already 404, so the list must not link to them until restore.
+        isNull(schema.projects.deletedAt)
       )
     )
     .orderBy(asc(schema.tasks.endAt));

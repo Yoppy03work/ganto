@@ -162,6 +162,7 @@
 - `share` トークンの一覧 / 作成 / 取消はいずれも `project.settings`（audience 拡大ガード）
 - attachment の削除は `taskId` スコープで他タスクの添付を消せないことを保証
 - 通知 / アカウント / GitHub OAuth ルートは本人スコープのみ（`userId` で絞り込み）
+- soft-deleted（Trash 入り）プロジェクトは全サブページ（Gantt / report / resources / audit / members / roles / settings / trash）と My tasks 横断ビューで `projects.deletedAt IS NULL` ゲートにより不可視（復元はホームの「削除済みプロジェクト」からのみ）
 
 ## チェックリスト（新規ルート追加時）
 

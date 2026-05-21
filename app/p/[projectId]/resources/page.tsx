@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { requireCurrentUser } from "@/lib/auth/server";
 import { getMembership } from "@/lib/projects/members";
@@ -24,7 +24,9 @@ export default async function ResourcesPage({
   const [project] = await db
     .select({ id: schema.projects.id, name: schema.projects.name })
     .from(schema.projects)
-    .where(eq(schema.projects.id, projectId))
+    .where(
+      and(eq(schema.projects.id, projectId), isNull(schema.projects.deletedAt))
+    )
     .limit(1);
   if (!project) redirect("/");
 
