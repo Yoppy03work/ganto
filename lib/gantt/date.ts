@@ -9,12 +9,16 @@
 
 import { isHoliday } from "./holidays";
 
-export type ScaleKey = "Day" | "Week" | "Month";
+export type ScaleKey = "Day" | "Week" | "Month" | "Quarter" | "Year";
 
 export const SCALE_PX_PER_DAY: Record<ScaleKey, number> = {
   Day: 36,
   Week: 12,
   Month: 4,
+  // Coarser long-horizon scales. Day-based coordinate system unchanged —
+  // these just shrink px/day and use coarser header groupings.
+  Quarter: 1.6,
+  Year: 0.55,
 };
 
 /** Default DAY_PX kept as a re-export for code that hasn't migrated yet. */
@@ -110,10 +114,19 @@ export type YearGroup = {
   widthPx: number;
 };
 
+/** A quarter cell (Q1..Q4) used by the Quarter / Year headers. */
+export type QuarterCell = {
+  date: Date; // first day of the quarter
+  label: string; // "Q1" / "Q2" ...
+  widthPx: number;
+};
+
 export type GanttHeader =
   | { kind: "Day"; days: DayCell[]; months: MonthGroup[] }
   | { kind: "Week"; weeks: WeekCell[]; months: MonthGroup[] }
-  | { kind: "Month"; months: MonthCell[]; years: YearGroup[] };
+  | { kind: "Month"; months: MonthCell[]; years: YearGroup[] }
+  | { kind: "Quarter"; months: MonthCell[]; quarters: QuarterCell[] }
+  | { kind: "Year"; quarters: QuarterCell[]; years: YearGroup[] };
 
 /**
  * Build the date-header structure for a window of `windowDays` days starting
@@ -276,5 +289,98 @@ export function buildMonthHeader(
     cur.widthPx += pxPerDay;
   }
   return { months, years };
+}
+
+/** First day of the quarter (Jan/Apr/Jul/Oct 1) containing `d`. */
+function startOfQuarter(d: Date): Date {
+  const q = Math.floor(d.getMonth() / 3);
+  return new Date(d.getFullYear(), q * 3, 1);
+}
+
+/**
+ * Build a Quarter-scale header: primary cells = months (compact),
+ * top groups = quarters ("Q1 2026").
+ */
+export function buildQuarterHeader(
+  origin: Date,
+  windowDays: number,
+  pxPerDay: number
+): { months: MonthCell[]; quarters: QuarterCell[] } {
+  const start = startOfDay(origin);
+  const end = addDays(start, windowDays);
+
+  const months: MonthCell[] = [];
+  let mStart = new Date(start.getFullYear(), start.getMonth(), 1);
+  while (mStart < end) {
+    const next = new Date(mStart.getFullYear(), mStart.getMonth() + 1, 1);
+    const segStart = mStart < start ? start : mStart;
+    const segEnd = next > end ? end : next;
+    const days = daysBetween(segEnd, segStart);
+    months.push({
+      date: new Date(mStart),
+      label: MONTHS[mStart.getMonth()],
+      widthPx: days * pxPerDay,
+    });
+    mStart = next;
+  }
+
+  const quarters: QuarterCell[] = [];
+  let qStart = startOfQuarter(start);
+  while (qStart < end) {
+    const next = new Date(qStart.getFullYear(), qStart.getMonth() + 3, 1);
+    const segStart = qStart < start ? start : qStart;
+    const segEnd = next > end ? end : next;
+    const days = daysBetween(segEnd, segStart);
+    const qNum = Math.floor(qStart.getMonth() / 3) + 1;
+    quarters.push({
+      date: new Date(qStart),
+      label: `Q${qNum} ${qStart.getFullYear()}`,
+      widthPx: days * pxPerDay,
+    });
+    qStart = next;
+  }
+
+  return { months, quarters };
+}
+
+/**
+ * Build a Year-scale header: primary cells = quarters ("Q1".."Q4"),
+ * top groups = years.
+ */
+export function buildYearHeader(
+  origin: Date,
+  windowDays: number,
+  pxPerDay: number
+): { quarters: QuarterCell[]; years: YearGroup[] } {
+  const start = startOfDay(origin);
+  const end = addDays(start, windowDays);
+
+  const quarters: QuarterCell[] = [];
+  let qStart = startOfQuarter(start);
+  while (qStart < end) {
+    const next = new Date(qStart.getFullYear(), qStart.getMonth() + 3, 1);
+    const segStart = qStart < start ? start : qStart;
+    const segEnd = next > end ? end : next;
+    const days = daysBetween(segEnd, segStart);
+    const qNum = Math.floor(qStart.getMonth() / 3) + 1;
+    quarters.push({
+      date: new Date(qStart),
+      label: `Q${qNum}`,
+      widthPx: days * pxPerDay,
+    });
+    qStart = next;
+  }
+
+  const years: YearGroup[] = [];
+  let cur: YearGroup | null = null;
+  for (let d = new Date(start); d < end; d = addDays(d, 1)) {
+    const key = String(d.getFullYear());
+    if (!cur || cur.key !== key) {
+      cur = { key, label: key, widthPx: 0 };
+      years.push(cur);
+    }
+    cur.widthPx += pxPerDay;
+  }
+  return { quarters, years };
 }
 
