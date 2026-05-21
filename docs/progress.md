@@ -151,6 +151,72 @@ PM レビューを2周経て確定した4 Epic を順次実装。
 - `pnpm build` 通過（28 → 31 ルート、`/forgot-password` / `/reset-password` / `/p/[id]/trash` 等が追加）
 - 残りはユーザーによるブラウザ確認（2タブで同タスクをドラッグ → 409 toast、Trash → Restore など）
 
+### Phase 8: 機能拡充 一気実装（2026-05-20）
+
+「2FA/TOTP・SSO(SAML/OIDC)・30日経過後の hard delete cron 以外すべて」を実装するフェーズ。
+9 本のレビュー可能な PR (#7〜#15) に分割し、各 PR で lint + build + Vercel CI 通過 + Codex レビュー対応を行い、自律で develop にマージ。
+
+#### GitHub OAuth: self-hosted 化（PR #5）
+- ✅ Neon Auth の `linkSocial` がプロキシ + 独自 OAuth キーのクロスドメイン Cookie 問題で `state_mismatch` → **自前 OAuth フロー**に移行
+- ✅ `githubUserTokens` テーブル + `/api/github/oauth/{start,callback}` + CSRF state Cookie
+- ✅ token 保存は `onConflictDoUpdate`（neon-http は `db.transaction()` 非対応のため）
+- ✅ 各ユーザーが `/account` から自分の GitHub を Connect（shared PAT 廃止）
+
+#### UX クイックウィン（PR #7）
+- ✅ Warning パネル（overdue / due soon）`warning-button.tsx`
+- ✅ タスク検索 / フィルタ `gantt-filter.tsx`
+- ✅ ヘルプ / キーボードショートカット dialog `help-dialog.tsx`
+- ✅ タスク変更履歴 `task-history.tsx`（audit_log ベース）/ ツールチップ `ui/tooltip.tsx`
+
+#### Quarter / Year スケール（PR #8）
+- ✅ Day / Week / Month に加え **Quarter / Year** ズームスケールを追加
+
+#### PM 可視化（PR #9）
+- ✅ マイルストーン `milestones` + `milestone-layer.tsx`
+- ✅ ベースライン（計画 vs 実績）`baselines` / `baseline_tasks`
+- ✅ リソースビュー / PM コントロール `pm-controls.tsx`
+
+#### 通知（PR #10）
+- ✅ in-app 通知 `notifications` + `notification-bell.tsx`
+- ✅ @メンション / アサイン通知（メールは `RESEND_API_KEY` 設定時のみ、未設定なら in-app のみ）
+
+#### ファイル添付（PR #11）
+- ✅ Vercel Blob (`@vercel/blob`) でタスクに添付 `attachments` + `task-attachments.tsx`
+- ✅ `BLOB_READ_WRITE_TOKEN` 未設定なら fail-soft（添付機能のみ無効化）
+- ✅ Codex P1 修正: `deleteAttachment` を `taskId` スコープに（own 権限での他タスク添付削除を防止）
+
+#### 生産性（PR #12）
+- ✅ タスクテンプレート `task_templates` + `templates-manager.tsx`
+- ✅ 繰り返しタスク `task-repeat.tsx`
+- ✅ 依存の自動シフト `lib/projects/cascade.ts`（`shiftDownstream` BFS、neon-http のため逐次更新）
+
+#### エクスポート / 共有（PR #13）
+- ✅ PNG / PDF エクスポート（html-to-image + jspdf）`export-menu.tsx`
+- ✅ 共有リンク `share_tokens` + `share-manager.tsx` + 公開読み取り専用 `/share/[token]`
+- ✅ 進捗レポート
+
+#### クロスプロジェクト（PR #14）
+- ✅ My tasks 横断ビュー `lib/projects/my-tasks.ts` + `project-switcher.tsx`
+- ✅ Codex P1 修正: membership INNER JOIN (status=active) で離脱済みプロジェクトのタスク漏洩を防止
+
+#### セキュリティ / 運用（PR #15）
+- ✅ Project soft delete + 復元 `lib/projects/project-trash.ts` + `deleted-projects.tsx`（`/api/projects/[id]` DELETE を soft delete に、`/restore` 追加）
+- ✅ Rate limiting `lib/rate-limit.ts`（in-memory fixed-window、auth POST に 10/5min per IP+path、fail-open）
+- ✅ セッション管理 `/account` + `sessions-panel.tsx`（`auth.listSessions()` / `auth.revokeSession()`）
+
+#### Migration（Phase 8）
+- `0003` github_user_tokens / `0004` milestones+baselines / `0005` notifications / `0006` attachments / `0007` task_templates / `0008` share_tokens / `0009` projects soft delete
+- 本番 DB に適用済み
+
+#### スコープ外（明示的に未実装）
+- 2FA / TOTP
+- SSO (SAML / OIDC)
+- 30 日経過後の hard delete cron
+
+#### 検証
+- 全 PR で `pnpm lint` / `pnpm build` / Vercel CI 通過、Codex P1 セキュリティ指摘は修正してマージ
+- 残りはユーザーによるブラウザ確認 + オプション env var 設定（`GITHUB_OAUTH_CLIENT_ID/SECRET`, `BLOB_READ_WRITE_TOKEN`, `RESEND_API_KEY/EMAIL_FROM`）
+
 ### 動作確認済みフロー
 
 - サインアップ → ログイン → ログアウト → Google OAuth
@@ -218,12 +284,13 @@ pnpm db:seed      # ビルトインロール seed
 
 ## 残タスク
 
+- [x] ~~Hour / Halfday / Quarter スケール~~ → Quarter / Year を Phase 8 で追加
+- [x] ~~Warning パネル（overdue / due soon）~~ → Phase 8 (PR #7)
+- [x] ~~Project Tabs（複数プロジェクト同時表示）~~ → My tasks 横断ビュー + switcher を Phase 8 (PR #14)
+- [x] ~~PDF / PNG export~~ → Phase 8 (PR #13)
 - [ ] Vercel への実デプロイ（手順は `DEPLOY.md` に記載）
-- [ ] Hour / Halfday / Quarter スケール（design に存在、今は Day/Week/Month のみ）
-- [ ] Warning パネル（overdue / due soon）
-- [ ] Project Tabs（複数プロジェクト同時表示）
-- [ ] PDF / PNG export（design に存在、今は CSV のみ）
-- [ ] SSO / 2FA（Better Auth プラグインで対応可だが未着手）
+- [ ] SSO (SAML/OIDC) / 2FA・TOTP（Better Auth プラグインで対応可だが今回スコープ外）
+- [ ] 30 日経過後の soft-deleted hard delete cron（今回スコープ外）
 
 ## ルート一覧（build 出力より）
 
