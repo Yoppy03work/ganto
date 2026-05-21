@@ -27,14 +27,17 @@ export async function createShareToken(opts: {
   projectId: string;
   actorId: string;
   expiresAt?: Date | null;
-}): Promise<{ token: string }> {
+}): Promise<{ id: string; token: string; createdAt: Date }> {
   const token = randomBytes(24).toString("base64url");
-  await db.insert(schema.shareTokens).values({
-    projectId: opts.projectId,
-    token,
-    createdBy: opts.actorId,
-    expiresAt: opts.expiresAt ?? null,
-  });
+  const [row] = await db
+    .insert(schema.shareTokens)
+    .values({
+      projectId: opts.projectId,
+      token,
+      createdBy: opts.actorId,
+      expiresAt: opts.expiresAt ?? null,
+    })
+    .returning({ id: schema.shareTokens.id, createdAt: schema.shareTokens.createdAt });
   await recordAudit({
     projectId: opts.projectId,
     actorId: opts.actorId,
@@ -42,7 +45,7 @@ export async function createShareToken(opts: {
     targetType: "project",
     targetId: opts.projectId,
   });
-  return { token };
+  return { id: row.id, token, createdAt: row.createdAt };
 }
 
 export async function revokeShareToken(opts: {

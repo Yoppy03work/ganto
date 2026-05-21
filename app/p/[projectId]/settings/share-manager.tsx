@@ -35,12 +35,18 @@ export function ShareManager({
         credentials: "same-origin",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || typeof data.token !== "string") {
+      if (!res.ok || typeof data.token !== "string" || typeof data.id !== "string") {
         toast.error(typeof data.error === "string" ? data.error : "作成に失敗しました");
         return;
       }
+      // Use the server-assigned id so revoke targets the real DB row.
       setTokens((arr) => [
-        { id: crypto.randomUUID(), token: data.token, createdAt: new Date().toISOString() },
+        {
+          id: data.id,
+          token: data.token,
+          createdAt:
+            typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString(),
+        },
         ...arr,
       ]);
       toast.success("共有リンクを作成しました");

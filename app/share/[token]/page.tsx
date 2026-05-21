@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { resolveShareToken } from "@/lib/projects/share";
 import { listProjectTasks } from "@/lib/projects/tasks";
@@ -22,10 +22,14 @@ export default async function SharePage({
   const projectId = await resolveShareToken(token);
   if (!projectId) notFound();
 
+  // A soft-deleted project must stop resolving through existing share tokens —
+  // "moved to Trash" should also revoke public visibility.
   const [project] = await db
     .select({ name: schema.projects.name })
     .from(schema.projects)
-    .where(eq(schema.projects.id, projectId))
+    .where(
+      and(eq(schema.projects.id, projectId), isNull(schema.projects.deletedAt))
+    )
     .limit(1);
   if (!project) notFound();
 
