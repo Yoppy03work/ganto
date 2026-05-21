@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { SettingsForm } from "./settings-form";
 import { DangerZone } from "./danger-zone";
 import { GithubSyncButton } from "./sync-button";
+import { ShareManager } from "./share-manager";
+import { listShareTokens } from "@/lib/projects/share";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +41,15 @@ export default async function SettingsPage({
 
   const isOwner = role.name === "Owner";
   const canEdit = role.name === "Owner" || role.name === "Admin";
+
+  const shareTokens = canEdit
+    ? (await listShareTokens(projectId)).map((t) => ({
+        id: t.id,
+        token: t.token,
+        createdAt: t.createdAt.toISOString(),
+      }))
+    : [];
+  const appUrl = process.env.APP_URL ?? "";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -100,6 +111,14 @@ export default async function SettingsPage({
             </p>
             <GithubSyncButton projectId={project.id} />
           </section>
+        )}
+
+        {canEdit && (
+          <ShareManager
+            projectId={project.id}
+            initial={shareTokens}
+            appUrl={appUrl}
+          />
         )}
 
         {isOwner && <DangerZone projectId={project.id} projectName={project.name} />}

@@ -11,6 +11,7 @@ const PUBLIC_PREFIXES = [
   "/forgot-password",
   "/reset-password",
   "/invite/", // /invite/[token]
+  "/share/", // /share/[token] — read-only public Gantt
 ];
 
 function isPublic(pathname: string): boolean {

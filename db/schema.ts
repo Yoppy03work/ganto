@@ -366,6 +366,25 @@ export const taskTemplates = pgTable(
   (t) => [index("task_templates_project_idx").on(t.projectId)]
 );
 
+// ---------- Share tokens ----------
+
+// Read-only public share links for a project's Gantt. Anyone with the token
+// URL can view (no login). Revocable by deleting the row; optional expiry.
+export const shareTokens = pgTable(
+  "share_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    token: text("token").notNull().unique(),
+    createdBy: text("created_by"), // Neon Auth user id
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("share_tokens_token_idx").on(t.token)]
+);
+
 // ---------- Attachments ----------
 
 // File attachments on a task, stored in Vercel Blob. We keep only metadata +
