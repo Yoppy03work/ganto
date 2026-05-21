@@ -32,6 +32,12 @@ import { DependencyArrows } from "./dependency-arrows";
 import { ImportExportMenu } from "./import-export";
 import { WarningButton } from "./warning-button";
 import { HelpDialog } from "./help-dialog";
+import { MilestoneLayer, type Milestone } from "./milestone-layer";
+import {
+  MilestonesManager,
+  BaselineControls,
+  type BaselineMeta,
+} from "./pm-controls";
 import {
   GanttFilterBar,
   applyFilter,
@@ -72,6 +78,8 @@ export function GanttScreen({
   canCreate,
   members,
   currentUserId,
+  initialMilestones = [],
+  baselines: initialBaselines = [],
 }: {
   projectId: string;
   initialTasks: GanttTaskDTO[];
@@ -79,6 +87,8 @@ export function GanttScreen({
   canCreate: boolean;
   members: Member[];
   currentUserId: string;
+  initialMilestones?: Milestone[];
+  baselines?: BaselineMeta[];
 }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
@@ -91,6 +101,42 @@ export function GanttScreen({
   const [showCp, setShowCp] = useState(true);
   const [scale, setScale] = useState<ScaleKey>("Day");
   const pxPerDay = SCALE_PX_PER_DAY[scale];
+
+  // Milestones + baselines (PM visualization).
+  const [milestones, setMilestones] = useState<Milestone[]>(initialMilestones);
+  const [baselineList, setBaselineList] = useState<BaselineMeta[]>(initialBaselines);
+  const [activeBaselineId, setActiveBaselineId] = useState<string | null>(null);
+  // taskId → snapshot { startAt, endAt } for the active baseline (ghost bars).
+  const [baselineSnap, setBaselineSnap] = useState<
+    Map<string, { startAt: string | null; endAt: string | null }>
+  >(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      // No active baseline → clear snapshot (done inside the async callback so
+      // it's not a synchronous setState in the effect body).
+      if (!activeBaselineId) {
+        if (!cancelled) setBaselineSnap(new Map());
+        return;
+      }
+      const res = await fetch(
+        `/api/projects/${projectId}/baselines/${activeBaselineId}`,
+        { credentials: "same-origin" }
+      );
+      if (!res.ok || cancelled) return;
+      const data = (await res.json()) as {
+        tasks: { taskId: string; startAt: string | null; endAt: string | null }[];
+      };
+      const m = new Map<string, { startAt: string | null; endAt: string | null }>();
+      for (const t of data.tasks) m.set(t.taskId, { startAt: t.startAt, endAt: t.endAt });
+      if (!cancelled) setBaselineSnap(m);
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBaselineId, projectId]);
 
   // Search / filter, keyboard help, and keyboard-triggered new task.
   const [filter, setFilter] = useState<GanttFilter>(EMPTY_FILTER);
@@ -535,6 +581,20 @@ export function GanttScreen({
               setOpenTaskId(id);
             }}
           />
+          <MilestonesManager
+            projectId={projectId}
+            milestones={milestones}
+            onChange={setMilestones}
+            canEdit={canCreate}
+          />
+          <BaselineControls
+            projectId={projectId}
+            baselines={baselineList}
+            activeId={activeBaselineId}
+            onSelect={setActiveBaselineId}
+            onCreated={(b) => setBaselineList((arr) => [b, ...arr])}
+            canEdit={canCreate}
+          />
           <span className="text-[11px] font-mono text-muted-foreground">
             {filtered
               ? `${visibleTasks.length}/${tasks.length}`
@@ -711,6 +771,15 @@ export function GanttScreen({
           >
             <TimelineGrid cells={gridCells} />
 
+            {milestones.length > 0 && (
+              <MilestoneLayer
+                milestones={milestones}
+                origin={origin}
+                pxPerDay={pxPerDay}
+                height={Math.max(totalRowsHeight, 200)}
+              />
+            )}
+
             {/* Dependency arrows render BEFORE bars so bars overlap the line
                 segments that pass behind them — only the entry/exit nubs and
                 the arrowhead at the destination's left edge stay visible. */}
@@ -747,6 +816,32 @@ export function GanttScreen({
                     setOpenTaskId(t.id);
                   }}
                 >
+                  {(() => {
+                    // Baseline ghost bar (planned snapshot) behind the real bar.
+                    const snap = baselineSnap.get(t.id);
+                    if (!snap || !snap.startAt || !snap.endAt) return null;
+                    const gx = dateToPx(
+                      startOfDay(new Date(snap.startAt)),
+                      origin,
+                      pxPerDay
+                    );
+                    const gw =
+                      dateToPx(new Date(snap.endAt), origin, pxPerDay) - gx;
+                    return (
+                      <div
+                        className="absolute rounded pointer-events-none"
+                        style={{
+                          left: gx + 1,
+                          top: ROW_H - 10,
+                          width: Math.max(8, gw) - 2,
+                          height: 5,
+                          background:
+                            "color-mix(in oklab, var(--muted-foreground) 45%, transparent)",
+                        }}
+                        title="Baseline (planned)"
+                      />
+                    );
+                  })()}
                   {start && end && (
                     <BarWithDrag
                       task={t}

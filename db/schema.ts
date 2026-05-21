@@ -278,6 +278,65 @@ export const githubUserTokens = pgTable(
   ]
 );
 
+// ---------- Milestones ----------
+
+// Point-in-time markers rendered as ◆ on the Gantt timeline (release dates,
+// deadlines, review gates). Independent of tasks.
+export const milestones = pgTable(
+  "milestones",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    title: text("title").notNull(),
+    date: timestamp("date", { withTimezone: true }).notNull(),
+    // Optional accent color (hex). Defaults handled in UI.
+    color: text("color"),
+    createdBy: text("created_by"), // Neon Auth user id
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    lockVersion: integer("lock_version").default(0).notNull(),
+  },
+  (t) => [index("milestones_project_idx").on(t.projectId)]
+);
+
+// ---------- Baselines ----------
+
+// A baseline is a named snapshot of every task's planned start/end at a moment
+// in time. The Gantt can overlay these "ghost" bars to show planned vs actual.
+export const baselines = pgTable(
+  "baselines",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    createdBy: text("created_by"), // Neon Auth user id
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("baselines_project_idx").on(t.projectId)]
+);
+
+// Per-task snapshot rows for a baseline. `title` is captured at snapshot time
+// so the baseline reads correctly even if the task is later renamed.
+export const baselineTasks = pgTable(
+  "baseline_tasks",
+  {
+    baselineId: uuid("baseline_id")
+      .references(() => baselines.id, { onDelete: "cascade" })
+      .notNull(),
+    taskId: uuid("task_id")
+      .references(() => tasks.id, { onDelete: "cascade" })
+      .notNull(),
+    title: text("title").notNull(),
+    startAt: timestamp("start_at", { withTimezone: true }),
+    endAt: timestamp("end_at", { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.baselineId, t.taskId] })]
+);
+
 // ---------- Comments ----------
 
 export const comments = pgTable(

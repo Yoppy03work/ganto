@@ -6,6 +6,8 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { listProjectTasks } from "@/lib/projects/tasks";
 import { listProjectMembers } from "@/lib/projects/members";
 import { listProjectDependencies } from "@/lib/projects/dependencies";
+import { listProjectMilestones } from "@/lib/projects/milestones";
+import { listProjectBaselines } from "@/lib/projects/baselines";
 import { hasCapability } from "@/lib/auth/permission";
 import { Button } from "@/components/ui/button";
 import { GanttScreen } from "@/components/gantt/gantt-screen";
@@ -37,12 +39,28 @@ export default async function ProjectPage({
   if (rows.length === 0) notFound();
   const { project, role } = rows[0];
 
-  const [tasksRaw, canCreate, membersRaw, deps] = await Promise.all([
-    listProjectTasks(projectId),
-    hasCapability(user.id, projectId, "task.create"),
-    listProjectMembers(projectId),
-    listProjectDependencies(projectId),
-  ]);
+  const [tasksRaw, canCreate, membersRaw, deps, milestonesRaw, baselines] =
+    await Promise.all([
+      listProjectTasks(projectId),
+      hasCapability(user.id, projectId, "task.create"),
+      listProjectMembers(projectId),
+      listProjectDependencies(projectId),
+      listProjectMilestones(projectId),
+      listProjectBaselines(projectId),
+    ]);
+
+  const milestones = milestonesRaw.map((m) => ({
+    id: m.id,
+    title: m.title,
+    date: m.date.toISOString(),
+    color: m.color,
+    lockVersion: m.lockVersion,
+  }));
+  const baselineList = baselines.map((b) => ({
+    id: b.id,
+    name: b.name,
+    createdAt: b.createdAt.toISOString(),
+  }));
 
   const members = membersRaw.map((m) => ({
     userId: m.userId,
@@ -100,6 +118,9 @@ export default async function ProjectPage({
           <Link href={`/p/${project.id}/roles`}>
             <Button variant="ghost" size="sm">Roles</Button>
           </Link>
+          <Link href={`/p/${project.id}/resources`}>
+            <Button variant="ghost" size="sm">Resources</Button>
+          </Link>
           <Link href={`/p/${project.id}/audit`}>
             <Button variant="ghost" size="sm">Audit</Button>
           </Link>
@@ -119,6 +140,8 @@ export default async function ProjectPage({
         canCreate={canCreate}
         members={members}
         currentUserId={user.id}
+        initialMilestones={milestones}
+        baselines={baselineList}
       />
     </div>
   );
