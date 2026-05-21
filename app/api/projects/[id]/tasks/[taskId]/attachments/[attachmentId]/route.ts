@@ -25,7 +25,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const url = await deleteAttachment({ projectId, attachmentId, actorId: user.id });
+  const url = await deleteAttachment({ projectId, taskId, attachmentId, actorId: user.id });
   if (!url) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Best-effort blob byte deletion (DB row is already gone).

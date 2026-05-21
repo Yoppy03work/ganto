@@ -72,9 +72,15 @@ export async function recordAttachment(opts: {
 }
 
 /** Returns the blob URL of the deleted attachment (so the route can delete
- *  the blob bytes too), or null if not found / not in this project. */
+ *  the blob bytes too), or null if not found / not in this project+task.
+ *
+ *  `taskId` MUST be part of the lookup: authorization in the route is computed
+ *  from the taskId path segment, so without scoping the delete to that task a
+ *  user with `own`-scoped task.update on task A could delete task B's
+ *  attachment by passing A's taskId + B's attachmentId. */
 export async function deleteAttachment(opts: {
   projectId: string;
+  taskId: string;
   attachmentId: string;
   actorId: string;
 }): Promise<string | null> {
@@ -89,7 +95,8 @@ export async function deleteAttachment(opts: {
     .where(
       and(
         eq(schema.attachments.id, opts.attachmentId),
-        eq(schema.attachments.projectId, opts.projectId)
+        eq(schema.attachments.projectId, opts.projectId),
+        eq(schema.attachments.taskId, opts.taskId)
       )
     )
     .limit(1);
