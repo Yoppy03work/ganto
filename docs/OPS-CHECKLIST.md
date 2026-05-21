@@ -12,7 +12,6 @@ ganto を本番環境（Vercel + Neon + Sentry）で安全に運用するため�
 - [ ] `NEON_AUTH_BASE_URL` / `NEON_AUTH_COOKIE_SECRET` 設定済み
 - [ ] `AUTH_SECRET` が本番用 (`openssl rand -hex 32`)
 - [ ] `APP_URL` が本番ドメイン
-- [ ] `ALLOW_PROJECT_DELETE=false`（必ず false でデプロイすること）
 - [ ] `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_DSN` / `SENTRY_AUTH_TOKEN` 設定済み
 - [ ] Neon Auth Console で **GitHub provider が有効化**されている（GitHub Projects 同期を使う場合のみ。`docs/GITHUB-OAUTH.md` 参照）
 
@@ -51,17 +50,15 @@ ganto を本番環境（Vercel + Neon + Sentry）で安全に運用するため�
 
 ## 緊急対応
 
-### Project を「正規に削除」する必要が出た場合
+### Project の削除 / 復元
 
-通常 `ALLOW_PROJECT_DELETE=false` のため API が 503 を返す。
-個別案件として削除する場合:
+プロジェクト削除は **soft delete**（env フラグ不要）:
 
-1. 別チケットで削除承認を取る
-2. Vercel 環境変数で `ALLOW_PROJECT_DELETE=true` に変更
-3. Vercel を **再デプロイ** （env 変更だけでは反映されない）
-4. ガントの Settings 画面から削除実行
-5. 監査ログで `project.delete` action が記録されたことを確認
-6. **`ALLOW_PROJECT_DELETE=false` に戻して再デプロイ**
+1. Settings → Danger zone でプロジェクト名を入力して削除 → Trash 入り（一覧から消える）
+2. 復元はホーム画面の「削除済みプロジェクト」セクションから
+3. 監査ログに `project.delete` / `project.restore` が記録される
+
+物理削除（hard delete）が本当に必要な場合のみ、DBA が Neon コンソールで該当行を直接削除（cascade で関連データも消える、不可逆）。
 
 ### データ復旧
 

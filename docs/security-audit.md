@@ -26,7 +26,8 @@
 | `/api/projects` | POST | ✓ | (自由 — オーナーになる) | `project.create` |
 | `/api/projects/[id]` | GET | ✓ | `getMembership` 必須 | — |
 | `/api/projects/[id]` | PATCH | ✓ | `project.settings` | `project.update` |
-| `/api/projects/[id]` | DELETE | ✓ | `project.delete` + `ALLOW_PROJECT_DELETE=true` | `project.delete` / `project.delete.blocked` |
+| `/api/projects/[id]` | DELETE | ✓ | `project.delete` | `project.delete` (soft delete) |
+| `/api/projects/[id]/restore` | POST | ✓ | `project.delete` | `project.restore` |
 
 ### Tasks
 
@@ -98,7 +99,7 @@
 
 - 全 mutation ルートで `requireCurrentUser` + `requireCapability` が実装されている
 - 唯一の公開エンドポイント `/api/invitations/[token]` GET は意図的（招待表示用）。POST 側で token 検証
-- `/api/projects/[id]` DELETE は `ALLOW_PROJECT_DELETE` env で gate 済み（v2 まで実質無効）
+- `/api/projects/[id]` DELETE は soft delete（Trash 経由で復元可能。env フラグ不要）
 
 ## チェックリスト（新規ルート追加時）
 

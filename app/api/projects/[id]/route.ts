@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { requireCurrentUser } from "@/lib/auth/server";
 import { hasCapability } from "@/lib/auth/permission";
@@ -122,14 +122,10 @@ export async function PATCH(
 }
 
 /**
- * Hard-delete a project. Gated behind ALLOW_PROJECT_DELETE feature flag.
- *
- * The default for production environments is `false` so an accidental click
- * (or compromised account) can't wipe a project. Re-enabling is a deliberate
- * ops step documented in docs/OPS-CHECKLIST.md.
- *
- * Blocked attempts are logged in audit_log as `project.delete.blocked` so
- * we can see who tried.
+ * Soft-delete a project. The row is preserved with deleted_at + deleted_by so
+ * it can be restored from the project Trash. Replaces the old
+ * ALLOW_PROJECT_DELETE hard-delete gate — soft delete is the safe default, no
+ * env flag needed.
  */
 export async function DELETE(
   _req: Request,
@@ -141,42 +137,28 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  if (process.env.ALLOW_PROJECT_DELETE !== "true") {
-    await recordAudit({
-      projectId,
-      actorId: user.id,
-      action: "project.delete.blocked",
-      targetType: "project",
-      targetId: projectId,
-      before: { reason: "ALLOW_PROJECT_DELETE feature flag is off" },
-    });
-    return NextResponse.json(
-      {
-        error:
-          "Project deletion is disabled. Move tasks to Trash instead, or contact an admin.",
-        code: "PROJECT_DELETE_DISABLED",
-      },
-      { status: 503 }
-    );
-  }
-
   const [before] = await db
     .select()
     .from(schema.projects)
-    .where(eq(schema.projects.id, projectId))
+    .where(
+      and(eq(schema.projects.id, projectId), isNull(schema.projects.deletedAt))
+    )
     .limit(1);
   if (!before) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  await db
+    .update(schema.projects)
+    .set({ deletedAt: new Date(), deletedByUserId: user.id })
+    .where(eq(schema.projects.id, projectId));
+
   await recordAudit({
-    projectId: null, // project is being deleted, FK would null this anyway
+    projectId,
     actorId: user.id,
     action: "project.delete",
     targetType: "project",
     targetId: projectId,
     before: { name: before.name },
   });
-
-  await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
 
   return NextResponse.json({ ok: true });
 }

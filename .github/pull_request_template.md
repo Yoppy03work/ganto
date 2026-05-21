@@ -28,7 +28,7 @@
 ### データ削除 (重要)
 
 - [ ] **tasks の削除は soft delete 必須**（hard delete は `task_dependencies` / `comments` のみ許可）
-- [ ] **project hard delete は実務投入時は無効化されている** — 再有効化は別チケットで承認後 `ALLOW_PROJECT_DELETE=true` を環境変数に設定する
+- [ ] **project / task の削除は soft delete**（Trash から復元可能）。hard delete は `task_dependencies` / `comments` のみ許可
 - [ ] tasks の SELECT には `isNull(tasks.deletedAt)` を追加した（Trash 専用ビューを除く）
 
 ### スキーマ変更

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireCurrentUser } from "@/lib/auth/server";
 import { getGitHubConnection } from "@/lib/github/get-user-token";
 import { AccountGitHubPanel } from "./github-panel";
+import { SessionsPanel } from "./sessions-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,8 @@ export default async function AccountPage({
                 : null
           }
         />
+
+        <SessionsPanel />
       </main>
     </div>
   );

@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/server";
 import { listProjectsForUser } from "@/lib/projects/create";
+import { listDeletedProjectsForUser } from "@/lib/projects/project-trash";
 import { Button } from "@/components/ui/button";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { NotificationBell } from "@/components/notification-bell";
+import { DeletedProjects } from "@/components/deleted-projects";
 
 // Server Components that read the Neon Auth session must be dynamic.
 export const dynamic = "force-dynamic";
@@ -15,7 +17,10 @@ export default async function HomePage() {
     // proxy.ts should already have redirected, but this is a safety net.
     redirect("/login");
   }
-  const projects = await listProjectsForUser(user.id);
+  const [projects, deletedProjects] = await Promise.all([
+    listProjectsForUser(user.id),
+    listDeletedProjectsForUser(user.id),
+  ]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -83,6 +88,14 @@ export default async function HomePage() {
             ))}
           </div>
         )}
+
+        <DeletedProjects
+          initial={deletedProjects.map((p) => ({
+            id: p.id,
+            name: p.name,
+            deletedAt: p.deletedAt.toISOString(),
+          }))}
+        />
       </main>
     </div>
   );

@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { getCurrentUser } from "@/lib/auth/server";
 import { listProjectTasks } from "@/lib/projects/tasks";
@@ -36,7 +36,8 @@ export default async function ProjectPage({
     .where(
       and(
         eq(schema.memberships.userId, user.id),
-        eq(schema.memberships.projectId, projectId)
+        eq(schema.memberships.projectId, projectId),
+        isNull(schema.projects.deletedAt)
       )
     )
     .limit(1);
