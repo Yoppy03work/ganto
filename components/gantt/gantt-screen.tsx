@@ -23,10 +23,20 @@ import { TaskListToolbar, TaskRow } from "./task-row";
 import { GanttBar } from "./gantt-bar";
 import { TodayLine, TimelineGrid } from "./today-line";
 import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { NewTaskDialog } from "./new-task-dialog";
 import { TaskSidepanel } from "./task-sidepanel";
 import { DependencyArrows } from "./dependency-arrows";
 import { ImportExportMenu } from "./import-export";
+import { WarningButton } from "./warning-button";
+import { HelpDialog } from "./help-dialog";
+import {
+  GanttFilterBar,
+  applyFilter,
+  isFilterActive,
+  EMPTY_FILTER,
+  type GanttFilter,
+} from "./gantt-filter";
 import { criticalTaskSet } from "@/lib/gantt/critical-path";
 
 type Member = {
@@ -79,6 +89,25 @@ export function GanttScreen({
   const [showCp, setShowCp] = useState(true);
   const [scale, setScale] = useState<ScaleKey>("Day");
   const pxPerDay = SCALE_PX_PER_DAY[scale];
+
+  // Search / filter, keyboard help, and keyboard-triggered new task.
+  const [filter, setFilter] = useState<GanttFilter>(EMPTY_FILTER);
+  const filtered = isFilterActive(filter);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const visibleTasks = useMemo(
+    () => applyFilter(tasks, filter),
+    [tasks, filter]
+  );
+  // Deps where both endpoints are visible (so arrows don't dangle when
+  // filtering hides one side).
+  const visibleDeps = useMemo(() => {
+    if (!filtered) return deps;
+    const vis = new Set(visibleTasks.map((t) => t.id));
+    return deps.filter((d) => vis.has(d.fromTaskId) && vis.has(d.toTaskId));
+  }, [deps, visibleTasks, filtered]);
   // Compute critical-path set whenever tasks or deps change.
   const criticalSet = useMemo(
     () =>
@@ -108,6 +137,42 @@ export function GanttScreen({
     return () => clearInterval(id);
   }, []);
 
+  // Keyboard shortcuts: N = new task, / = focus search, ? = help, Esc = clear.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+      // Esc works even from inputs (to blur/clear search).
+      if (e.key === "Escape") {
+        if (filter.query || filter.status || filter.type || filter.assignee) {
+          setFilter(EMPTY_FILTER);
+        }
+        if (typing) (target as HTMLElement).blur();
+        return;
+      }
+      if (typing) return;
+      if (e.key === "n" || e.key === "N") {
+        if (canCreate) {
+          e.preventDefault();
+          setNewTaskOpen(true);
+        }
+      } else if (e.key === "/") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setHelpOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canCreate, filter]);
+
   const { origin, windowDays } = useMemo(
     () =>
       autoWindow(
@@ -136,7 +201,10 @@ export function GanttScreen({
   // For grid (weekend tints) we always use day cells, regardless of header scale.
   const gridCells = dayHeader.cells;
   const totalWidth = windowDays * pxPerDay;
-  const totalRowsHeight = tasks.length * ROW_H;
+  // Row layout is based on the *visible* (post-filter) task set so positions
+  // stay dense when filtering. Reorder is disabled while filtered, so the
+  // index math stays consistent with the full list otherwise.
+  const totalRowsHeight = visibleTasks.length * ROW_H;
 
   // ---- Vertical scroll sync (left rows ↔ right scroll). ----
   // The right scroll container owns BOTH axes; the DateHeader inside it uses
@@ -387,7 +455,46 @@ export function GanttScreen({
     return { marginTop: 0, marginBottom: 0 };
   }
 
+  // Map of taskId → upstream (blocking) task titles, for the bar tooltip.
+  const blockedByTitles = useMemo(() => {
+    const titleById = new Map(tasks.map((t) => [t.id, t.title] as const));
+    const m = new Map<string, string[]>();
+    for (const d of deps) {
+      const arr = m.get(d.toTaskId) ?? [];
+      const title = titleById.get(d.fromTaskId);
+      if (title) arr.push(title);
+      m.set(d.toTaskId, arr);
+    }
+    return m;
+  }, [tasks, deps]);
+
+  function buildTooltip(t: GanttTaskDTO): React.ReactNode {
+    const fmt = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleDateString() : "—";
+    const assignees = t.assignees.map((a) => a.name).join(", ") || "未割当";
+    const blockedBy = blockedByTitles.get(t.id) ?? [];
+    return (
+      <div className="space-y-0.5">
+        <div className="font-medium">{t.title}</div>
+        <div className="text-muted-foreground">
+          {fmt(t.startAt)} → {fmt(t.endAt)}
+        </div>
+        <div className="text-muted-foreground">
+          {t.status}
+          {t.progress != null && ` · ${Math.round(t.progress * 100)}%`}
+        </div>
+        <div className="text-muted-foreground">担当: {assignees}</div>
+        {blockedBy.length > 0 && (
+          <div className="text-muted-foreground">
+            Blocked by: {blockedBy.join(", ")}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
+    <TooltipProvider>
     <div className="flex flex-col h-[calc(100vh-3rem)]">
       <header className="h-12 border-b border-border flex items-center justify-between px-4 gap-3 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -410,8 +517,19 @@ export function GanttScreen({
           <Button variant="outline" size="sm" onClick={jumpToToday}>
             Today
           </Button>
+          <WarningButton
+            tasks={tasks}
+            now={now}
+            onOpenTask={(id) => {
+              setSelected(id);
+              setOpenTaskId(id);
+            }}
+          />
           <span className="text-[11px] font-mono text-muted-foreground">
-            {tasks.length} task{tasks.length === 1 ? "" : "s"}
+            {filtered
+              ? `${visibleTasks.length}/${tasks.length}`
+              : tasks.length}{" "}
+            task{tasks.length === 1 ? "" : "s"}
           </span>
           <span className="text-muted-foreground">·</span>
           <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer">
@@ -432,6 +550,12 @@ export function GanttScreen({
           </label>
         </div>
         <div className="flex items-center gap-2">
+          <GanttFilterBar
+            filter={filter}
+            onChange={setFilter}
+            members={members}
+            inputRef={searchInputRef}
+          />
           <ImportExportMenu
             projectId={projectId}
             canImport={canCreate}
@@ -441,6 +565,8 @@ export function GanttScreen({
             <NewTaskDialog
               projectId={projectId}
               onCreated={() => void refresh()}
+              open={newTaskOpen}
+              onOpenChange={setNewTaskOpen}
             />
           )}
         </div>
@@ -468,20 +594,20 @@ export function GanttScreen({
             onDrop={onRowDrop}
             className="flex-1 overflow-y-auto overflow-x-hidden"
           >
-            {tasks.map((t, i) => {
+            {visibleTasks.map((t, i) => {
               const { marginTop, marginBottom } = rowExtraMargin(i);
               return (
                 <div
                   key={t.id}
-                  draggable
-                  onDragStart={(e) => onRowDragStart(e, i)}
-                  onDragOver={(e) => onRowDragOver(e, i)}
+                  draggable={!filtered}
+                  onDragStart={(e) => !filtered && onRowDragStart(e, i)}
+                  onDragOver={(e) => !filtered && onRowDragOver(e, i)}
                   className="relative"
                   style={{
                     marginTop,
                     marginBottom,
                     transition: "margin 150ms ease",
-                    cursor: "grab",
+                    cursor: filtered ? "default" : "grab",
                   }}
                 >
                   {/* Drop indicator — thin primary line at the insertion edge */}
@@ -510,9 +636,11 @@ export function GanttScreen({
                 </div>
               );
             })}
-            {tasks.length === 0 && (
+            {visibleTasks.length === 0 && (
               <div className="px-4 py-12 text-center text-xs text-muted-foreground">
-                No tasks yet. Click + New task to add one.
+                {filtered
+                  ? "条件に一致するタスクがありません。"
+                  : "No tasks yet. Click + New task to add one."}
               </div>
             )}
           </div>
@@ -562,10 +690,10 @@ export function GanttScreen({
             {/* Dependency arrows render BEFORE bars so bars overlap the line
                 segments that pass behind them — only the entry/exit nubs and
                 the arrowhead at the destination's left edge stay visible. */}
-            {showArrows && deps.length > 0 && (
+            {showArrows && visibleDeps.length > 0 && (
               <DependencyArrows
-                tasks={tasks}
-                deps={deps}
+                tasks={visibleTasks}
+                deps={visibleDeps}
                 origin={origin}
                 pxPerDay={pxPerDay}
                 criticalSet={showCp ? criticalSet : new Set()}
@@ -575,7 +703,7 @@ export function GanttScreen({
               />
             )}
 
-            {tasks.map((t, i) => {
+            {visibleTasks.map((t, i) => {
               const { marginTop, marginBottom } = rowExtraMargin(i);
               const top = i * ROW_H;
               const start = t.startAt ? new Date(t.startAt) : null;
@@ -605,6 +733,7 @@ export function GanttScreen({
                       drag={drag}
                       selected={selected === t.id}
                       onCriticalPath={showCp && criticalSet.has(t.id)}
+                      tooltip={buildTooltip(t)}
                       onPointerDown={(e, handle) =>
                         startBarDrag(e, t.id, handle)
                       }
@@ -653,7 +782,10 @@ export function GanttScreen({
           );
         })()}
       </div>
+
+      <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -666,6 +798,7 @@ function BarWithDrag({
   drag,
   selected,
   onCriticalPath,
+  tooltip,
   onPointerDown,
 }: {
   task: GanttTaskDTO;
@@ -676,6 +809,7 @@ function BarWithDrag({
   drag: DragState;
   selected: boolean;
   onCriticalPath: boolean;
+  tooltip?: React.ReactNode;
   onPointerDown: (
     e: React.PointerEvent<HTMLDivElement>,
     handle: "move" | "left" | "right"
@@ -719,6 +853,7 @@ function BarWithDrag({
       w={w}
       state={state}
       onCriticalPath={onCriticalPath}
+      tooltip={tooltip}
       onPointerDown={onPointerDown}
     />
   );
