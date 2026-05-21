@@ -337,6 +337,34 @@ export const baselineTasks = pgTable(
   (t) => [primaryKey({ columns: [t.baselineId, t.taskId] })]
 );
 
+// ---------- Notifications ----------
+
+// In-app notifications delivered to a single recipient. Created on @mentions
+// in comments and on task assignment. `read_at` NULL = unread.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // Recipient (Neon Auth user id).
+    userId: text("user_id").notNull(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }),
+    // "mention" | "assigned" | "comment"
+    type: text("type").notNull(),
+    actorId: text("actor_id"), // who triggered it (Neon Auth user id)
+    title: text("title").notNull(),
+    body: text("body"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // Unread-first listing per user.
+    index("notifications_user_read_idx").on(t.userId, t.readAt),
+  ]
+);
+
 // ---------- Comments ----------
 
 export const comments = pgTable(
