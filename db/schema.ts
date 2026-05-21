@@ -337,6 +337,30 @@ export const baselineTasks = pgTable(
   (t) => [primaryKey({ columns: [t.baselineId, t.taskId] })]
 );
 
+// ---------- Attachments ----------
+
+// File attachments on a task, stored in Vercel Blob. We keep only metadata +
+// the blob URL here; the bytes live in Blob storage.
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    taskId: uuid("task_id")
+      .references(() => tasks.id, { onDelete: "cascade" })
+      .notNull(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    url: text("url").notNull(),
+    uploadedBy: text("uploaded_by"), // Neon Auth user id
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("attachments_task_idx").on(t.taskId)]
+);
+
 // ---------- Notifications ----------
 
 // In-app notifications delivered to a single recipient. Created on @mentions

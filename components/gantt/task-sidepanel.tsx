@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TASK_STATUSES, TASK_TYPES, type GanttTaskDTO } from "@/lib/gantt/types";
 import { TaskHistory } from "./task-history";
+import { TaskAttachments } from "./task-attachments";
 
 type Member = {
   userId: string;
@@ -425,6 +426,15 @@ export function TaskSidepanel({
           onDepsChanged={onDepsChanged}
           onError={setError}
         />
+
+        {/* Attachments */}
+        <div className="border-t border-border pt-4">
+          <TaskAttachments
+            projectId={projectId}
+            taskId={task.id}
+            canEdit={canEdit}
+          />
+        </div>
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
