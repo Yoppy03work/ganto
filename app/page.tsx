@@ -24,6 +24,12 @@ export default async function HomePage() {
           <span className="font-mono text-base font-semibold tracking-tight">ganto</span>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          <Link
+            href="/my-tasks"
+            className="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+          >
+            My tasks
+          </Link>
           <NotificationBell />
           <Link
             href="/account"
