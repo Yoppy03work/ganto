@@ -39,6 +39,7 @@ import {
   type BaselineMeta,
 } from "./pm-controls";
 import { TemplatesManager } from "./templates-manager";
+import { ExportMenu } from "./export-menu";
 import {
   GanttFilterBar,
   applyFilter,
@@ -79,6 +80,7 @@ export function GanttScreen({
   canCreate,
   members,
   currentUserId,
+  projectName,
   initialMilestones = [],
   baselines: initialBaselines = [],
   templates = [],
@@ -89,6 +91,7 @@ export function GanttScreen({
   canCreate: boolean;
   members: Member[];
   currentUserId: string;
+  projectName: string;
   initialMilestones?: Milestone[];
   baselines?: BaselineMeta[];
   templates?: { id: string; name: string; items: { title: string }[]; createdAt: string }[];
@@ -674,6 +677,7 @@ export function GanttScreen({
             canEdit={canCreate}
             onApplied={() => void refresh()}
           />
+          <ExportMenu projectName={projectName} />
           <ImportExportMenu
             projectId={projectId}
             canImport={canCreate}
@@ -811,7 +815,8 @@ export function GanttScreen({
             />
           )}
           <div
-            className="relative"
+            id="gantt-timeline-export"
+            className="relative bg-background"
             style={{
               width: totalWidth,
               height: Math.max(totalRowsHeight, 200),

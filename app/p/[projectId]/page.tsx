@@ -130,6 +130,9 @@ export default async function ProjectPage({
           <Link href={`/p/${project.id}/resources`}>
             <Button variant="ghost" size="sm">Resources</Button>
           </Link>
+          <Link href={`/p/${project.id}/report`}>
+            <Button variant="ghost" size="sm">Report</Button>
+          </Link>
           <Link href={`/p/${project.id}/audit`}>
             <Button variant="ghost" size="sm">Audit</Button>
           </Link>
@@ -150,6 +153,7 @@ export default async function ProjectPage({
         canCreate={canCreate}
         members={members}
         currentUserId={user.id}
+        projectName={project.name}
         initialMilestones={milestones}
         baselines={baselineList}
         templates={templates}
