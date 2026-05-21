@@ -11,6 +11,7 @@ import { listProjectBaselines } from "@/lib/projects/baselines";
 import { hasCapability } from "@/lib/auth/permission";
 import { Button } from "@/components/ui/button";
 import { GanttScreen } from "@/components/gantt/gantt-screen";
+import { NotificationBell } from "@/components/notification-bell";
 import type { GanttTaskDTO } from "@/lib/gantt/types";
 
 export const dynamic = "force-dynamic";
@@ -130,6 +131,7 @@ export default async function ProjectPage({
           <Link href={`/p/${project.id}/settings`}>
             <Button variant="ghost" size="sm">Settings</Button>
           </Link>
+          <NotificationBell />
         </div>
       </header>
 

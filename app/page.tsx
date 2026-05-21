@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { listProjectsForUser } from "@/lib/projects/create";
 import { Button } from "@/components/ui/button";
 import { NewProjectDialog } from "@/components/new-project-dialog";
+import { NotificationBell } from "@/components/notification-bell";
 
 // Server Components that read the Neon Auth session must be dynamic.
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export default async function HomePage() {
           <span className="font-mono text-base font-semibold tracking-tight">ganto</span>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          <NotificationBell />
           <Link
             href="/account"
             className="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
