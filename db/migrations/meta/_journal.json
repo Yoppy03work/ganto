@@ -43,6 +43,13 @@
       "when": 1779330866355,
       "tag": "0005_overrated_devos",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779331834118,
+      "tag": "0006_tough_madame_masque",
+      "breakpoints": true
     }
   ]
 }
