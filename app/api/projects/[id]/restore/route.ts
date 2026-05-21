@@ -13,7 +13,13 @@ export async function POST(
 ) {
   const { id: projectId } = await params;
   const user = await requireCurrentUser();
-  if (!(await hasCapability(user.id, projectId, "project.delete"))) {
+  // Restore is the one capability check that must run against a soft-deleted
+  // project — every other capability check rejects trashed projects.
+  if (
+    !(await hasCapability(user.id, projectId, "project.delete", {
+      includeDeleted: true,
+    }))
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const ok = await restoreProject({ projectId, actorId: user.id });

@@ -6,6 +6,7 @@ import { requireCurrentUser } from "@/lib/auth/server";
 import { getMembership } from "@/lib/projects/members";
 import { listProjectTasks } from "@/lib/projects/tasks";
 import { listProjectMembers } from "@/lib/projects/members";
+import { filterVisibleTasks } from "@/lib/gantt/visibility";
 import { computeResourceLoad } from "@/lib/gantt/resource-load";
 import { ResourceGridView } from "./resource-grid";
 
@@ -30,10 +31,14 @@ export default async function ResourcesPage({
     .limit(1);
   if (!project) redirect("/");
 
-  const [tasks, members] = await Promise.all([
+  const [tasksRaw, members] = await Promise.all([
     listProjectTasks(projectId),
     listProjectMembers(projectId),
   ]);
+
+  // Filter to tasks this role/user may see so per-assignee utilization can't be
+  // used to infer hidden (member-only / private) scheduling.
+  const tasks = filterVisibleTasks(tasksRaw, membership.roleName, user.id);
 
   const grid = computeResourceLoad(
     tasks.map((t) => ({

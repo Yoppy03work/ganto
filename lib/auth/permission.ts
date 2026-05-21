@@ -1,5 +1,5 @@
 import "server-only";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 
 /**
@@ -20,9 +20,20 @@ export type EffectivePermission = {
  * The caller is expected to apply these against the action being attempted.
  * For 'own'-scoped capabilities, the caller must verify ownership separately.
  */
+export type CapabilityOptions = {
+  /**
+   * When false (default), a soft-deleted (Trash) project resolves to no
+   * permissions — i.e. every capability check fails, so no mutation or read
+   * can target a trashed project. Only the restore flow passes `true`, since
+   * it is the one operation that must act on a deleted project.
+   */
+  includeDeleted?: boolean;
+};
+
 export async function getMembershipPermissions(
   userId: string,
-  projectId: string
+  projectId: string,
+  opts?: CapabilityOptions
 ): Promise<{ roleId: string; roleName: string; permissions: EffectivePermission[] } | null> {
   const rows = await db
     .select({
@@ -34,11 +45,14 @@ export async function getMembershipPermissions(
     })
     .from(schema.memberships)
     .innerJoin(schema.roles, eq(schema.roles.id, schema.memberships.roleId))
+    // Join the project so the capability gate also enforces "project is active".
+    .innerJoin(schema.projects, eq(schema.projects.id, schema.memberships.projectId))
     .leftJoin(schema.permissions, eq(schema.permissions.roleId, schema.roles.id))
     .where(
       and(
         eq(schema.memberships.userId, userId),
-        eq(schema.memberships.projectId, projectId)
+        eq(schema.memberships.projectId, projectId),
+        opts?.includeDeleted ? undefined : isNull(schema.projects.deletedAt)
       )
     );
 
@@ -69,9 +83,10 @@ export async function getMembershipPermissions(
 export async function hasCapability(
   userId: string,
   projectId: string,
-  capability: string
+  capability: string,
+  opts?: CapabilityOptions
 ): Promise<boolean> {
-  const m = await getMembershipPermissions(userId, projectId);
+  const m = await getMembershipPermissions(userId, projectId, opts);
   if (!m) return false;
   return m.permissions.some(
     (p) => p.capability === capability && p.scope === "all"
@@ -86,9 +101,10 @@ export async function hasCapabilityFor(
   userId: string,
   projectId: string,
   capability: string,
-  isOwner: boolean
+  isOwner: boolean,
+  opts?: CapabilityOptions
 ): Promise<boolean> {
-  const m = await getMembershipPermissions(userId, projectId);
+  const m = await getMembershipPermissions(userId, projectId, opts);
   if (!m) return false;
   return m.permissions.some(
     (p) =>

@@ -5,6 +5,7 @@ import { db, schema } from "@/db/client";
 import { requireCurrentUser } from "@/lib/auth/server";
 import { getMembership } from "@/lib/projects/members";
 import { listProjectTasks } from "@/lib/projects/tasks";
+import { filterVisibleTasks } from "@/lib/gantt/visibility";
 import { reportSummary, burndown, type ReportTask } from "@/lib/gantt/report";
 import { BurndownChart } from "./burndown-chart";
 
@@ -32,7 +33,10 @@ export default async function ReportPage({
   if (!project) redirect("/");
 
   const tasksRaw = await listProjectTasks(projectId);
-  const tasks: ReportTask[] = tasksRaw.map((t) => ({
+  // Aggregate only over tasks this role/user may see — otherwise totals,
+  // overdue counts, and burndown would leak member-only / private work.
+  const visible = filterVisibleTasks(tasksRaw, membership.roleName, user.id);
+  const tasks: ReportTask[] = visible.map((t) => ({
     status: t.status,
     startAt: t.startAt ? t.startAt.toISOString() : null,
     endAt: t.endAt ? t.endAt.toISOString() : null,
