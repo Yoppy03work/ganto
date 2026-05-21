@@ -9,6 +9,8 @@ import { listProjectDependencies } from "@/lib/projects/dependencies";
 import { listProjectMilestones } from "@/lib/projects/milestones";
 import { listProjectBaselines } from "@/lib/projects/baselines";
 import { listProjectTemplates } from "@/lib/projects/templates";
+import { listProjectsForUser } from "@/lib/projects/create";
+import { ProjectSwitcher } from "@/components/project-switcher";
 import { hasCapability } from "@/lib/auth/permission";
 import { Button } from "@/components/ui/button";
 import { GanttScreen } from "@/components/gantt/gantt-screen";
@@ -41,7 +43,7 @@ export default async function ProjectPage({
   if (rows.length === 0) notFound();
   const { project, role } = rows[0];
 
-  const [tasksRaw, canCreate, membersRaw, deps, milestonesRaw, baselines, templatesRaw] =
+  const [tasksRaw, canCreate, membersRaw, deps, milestonesRaw, baselines, templatesRaw, allProjects] =
     await Promise.all([
       listProjectTasks(projectId),
       hasCapability(user.id, projectId, "task.create"),
@@ -50,6 +52,7 @@ export default async function ProjectPage({
       listProjectMilestones(projectId),
       listProjectBaselines(projectId),
       listProjectTemplates(projectId),
+      listProjectsForUser(user.id),
     ]);
 
   const milestones = milestonesRaw.map((m) => ({
@@ -115,7 +118,10 @@ export default async function ProjectPage({
             ganto
           </Link>
           <span className="text-muted-foreground">/</span>
-          <span className="text-sm font-medium truncate">{project.name}</span>
+          <ProjectSwitcher
+            projects={allProjects.map((p) => ({ id: p.id, name: p.name }))}
+            currentId={project.id}
+          />
           <span className="inline-flex items-center rounded-md bg-muted text-muted-foreground border border-border px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide">
             {role.name}
           </span>
