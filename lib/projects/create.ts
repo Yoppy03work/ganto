@@ -2,7 +2,6 @@ import "server-only";
 import { isNull, eq, and, inArray } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { recordAudit } from "@/lib/audit/log";
-import { seedSampleTasks } from "./sample-tasks";
 
 /**
  * Create a new project, clone built-in role templates into project-scoped
@@ -104,12 +103,6 @@ export async function createProject(opts: {
       storageMode: opts.storageMode ?? "local",
     },
   });
-
-  // 6) Seed sample tasks so the Gantt isn't empty on first visit.
-  // Only for local-mode projects; GitHub-backed pulls from the connected project.
-  if ((opts.storageMode ?? "local") === "local") {
-    await seedSampleTasks({ projectId, createdBy: opts.userId });
-  }
 
   return { projectId, ownerRoleId: ownerRole.clonedId };
 }
