@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -10,6 +10,8 @@ import {
   buildQuarterHeader,
   buildYearHeader,
   autoWindow,
+  addDays,
+  daysBetween,
   dateToPx,
   todayPx,
   startOfDay,
@@ -228,7 +230,8 @@ export function GanttScreen({
     return () => window.removeEventListener("keydown", onKey);
   }, [canCreate, filter]);
 
-  const { origin, windowDays } = useMemo(
+  // Auto-fit base window around the tasks (or a sensible default near today).
+  const base = useMemo(
     () =>
       autoWindow(
         tasks.map((t) => ({
@@ -239,6 +242,16 @@ export function GanttScreen({
       ),
     [tasks, now]
   );
+  // Infinite timeline scroll: grow the window in day-chunks as the user nears
+  // an edge, layered on top of the auto-fit base so it always still contains
+  // every task. `extraPast` shifts `origin` earlier; both widen `windowDays`.
+  const [extraPast, setExtraPast] = useState(0);
+  const [extraFuture, setExtraFuture] = useState(0);
+  const origin = useMemo(
+    () => addDays(base.origin, -extraPast),
+    [base.origin, extraPast]
+  );
+  const windowDays = base.windowDays + extraPast + extraFuture;
 
   const dayHeader = useMemo(
     () => buildDayHeader(origin, windowDays, pxPerDay, now),
@@ -292,6 +305,21 @@ export function GanttScreen({
     requestAnimationFrame(() => {
       syncing.current = false;
     });
+  }
+
+  // Horizontal "infinite" scroll: extend the window when the user nears an edge.
+  function onRightScroll() {
+    syncScroll("right");
+    const el = rightScrollRef.current;
+    if (!el) return;
+    const MAX_EXTRA_DAYS = 366 * 10; // ~10 years of slack each side
+    const margin = pxPerDay * 14; // trigger within ~2 weeks of an edge
+    const chunk = 90;
+    if (el.scrollLeft < margin) {
+      setExtraPast((p) => (p >= MAX_EXTRA_DAYS ? p : p + chunk));
+    } else if (el.scrollLeft + el.clientWidth >= el.scrollWidth - margin) {
+      setExtraFuture((f) => (f >= MAX_EXTRA_DAYS ? f : f + chunk));
+    }
   }
 
   // ---- Bar drag (move / resize) ----
@@ -526,8 +554,24 @@ export function GanttScreen({
   useEffect(() => {
     if (!mounted) return;
     jumpToToday();
+    // Center on "today" once after hydrate. Intentionally NOT re-run on `origin`
+    // changes — otherwise extending the window at an edge (which shifts origin)
+    // would yank the view back to today.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [origin, mounted]);
+  }, [mounted]);
+
+  // Keep the viewport visually anchored when `origin` shifts — either because
+  // the user scrolled to an edge and we prepended days, or the auto-fit base
+  // window grew leftward. Compensate scrollLeft by the delta so nothing jumps.
+  const prevOriginRef = useRef<Date | null>(null);
+  useLayoutEffect(() => {
+    const el = rightScrollRef.current;
+    if (el && prevOriginRef.current) {
+      const shiftDays = daysBetween(prevOriginRef.current, origin);
+      if (shiftDays !== 0) el.scrollLeft += shiftDays * pxPerDay;
+    }
+    prevOriginRef.current = origin;
+  }, [origin, pxPerDay]);
 
   /** Row offset due to in-flight reorder drag — used for the "make space" animation. */
   function rowExtraMargin(i: number): {
@@ -771,7 +815,7 @@ export function GanttScreen({
         {/* RIGHT PANE — single scroll container, both axes */}
         <div
           ref={rightScrollRef}
-          onScroll={() => syncScroll("right")}
+          onScroll={onRightScroll}
           onPointerMove={onBarPointerMove}
           onPointerUp={onBarPointerUp}
           onPointerCancel={onBarPointerUp}
