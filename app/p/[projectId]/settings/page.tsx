@@ -1,12 +1,14 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { getCurrentUser } from "@/lib/auth/server";
 import { Button } from "@/components/ui/button";
 import { SettingsForm } from "./settings-form";
 import { DangerZone } from "./danger-zone";
 import { GithubSyncButton } from "./sync-button";
+import { ShareManager } from "./share-manager";
+import { listShareTokens } from "@/lib/projects/share";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +32,8 @@ export default async function SettingsPage({
     .where(
       and(
         eq(schema.memberships.userId, user.id),
-        eq(schema.memberships.projectId, projectId)
+        eq(schema.memberships.projectId, projectId),
+        isNull(schema.projects.deletedAt)
       )
     )
     .limit(1);
@@ -39,6 +42,15 @@ export default async function SettingsPage({
 
   const isOwner = role.name === "Owner";
   const canEdit = role.name === "Owner" || role.name === "Admin";
+
+  const shareTokens = canEdit
+    ? (await listShareTokens(projectId)).map((t) => ({
+        id: t.id,
+        token: t.token,
+        createdAt: t.createdAt.toISOString(),
+      }))
+    : [];
+  const appUrl = process.env.APP_URL ?? "";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -100,6 +112,14 @@ export default async function SettingsPage({
             </p>
             <GithubSyncButton projectId={project.id} />
           </section>
+        )}
+
+        {canEdit && (
+          <ShareManager
+            projectId={project.id}
+            initial={shareTokens}
+            appUrl={appUrl}
+          />
         )}
 
         {isOwner && <DangerZone projectId={project.id} projectName={project.name} />}

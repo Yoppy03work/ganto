@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TASK_STATUSES, TASK_TYPES, type GanttTaskDTO } from "@/lib/gantt/types";
+import { TaskHistory } from "./task-history";
+import { TaskAttachments } from "./task-attachments";
+import { TaskRepeat } from "./task-repeat";
 
 type Member = {
   userId: string;
@@ -43,6 +46,7 @@ export function TaskSidepanel({
   onChanged,
   onDeleted,
   onDepsChanged,
+  onRefresh,
 }: {
   projectId: string;
   task: GanttTaskDTO;
@@ -55,6 +59,7 @@ export function TaskSidepanel({
   onChanged: (patch: Partial<GanttTaskDTO>) => void;
   onDeleted: () => void;
   onDepsChanged: (deps: { fromTaskId: string; toTaskId: string }[]) => void;
+  onRefresh?: () => void;
 }) {
   const [title, setTitle] = useState(task.title);
   const [status, setStatus] = useState(task.status);
@@ -70,6 +75,7 @@ export function TaskSidepanel({
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
   const [postingComment, setPostingComment] = useState(false);
+  const [tab, setTab] = useState<"details" | "history">("details");
 
   // Note: this component is keyed by task.id at the call site, so switching
   // tasks remounts and re-initializes the form fields from the new task prop.
@@ -263,8 +269,21 @@ export function TaskSidepanel({
       style={{ width: 420 }}
     >
       <div className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0">
-        <div className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-          Task
+        <div className="flex items-center gap-1">
+          {(["details", "history"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={
+                "text-[11px] font-mono uppercase tracking-wider px-2 py-1 rounded transition-colors " +
+                (tab === t
+                  ? "text-foreground bg-muted"
+                  : "text-muted-foreground hover:text-foreground")
+              }
+            >
+              {t === "details" ? "Task" : "History"}
+            </button>
+          ))}
         </div>
         <button
           onClick={onClose}
@@ -275,6 +294,11 @@ export function TaskSidepanel({
         </button>
       </div>
 
+      {tab === "history" ? (
+        <div className="flex-1 overflow-y-auto p-4">
+          <TaskHistory projectId={projectId} taskId={task.id} />
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {/* Title */}
         <div className="space-y-1.5">
@@ -406,6 +430,15 @@ export function TaskSidepanel({
           onError={setError}
         />
 
+        {/* Attachments */}
+        <div className="border-t border-border pt-4">
+          <TaskAttachments
+            projectId={projectId}
+            taskId={task.id}
+            canEdit={canEdit}
+          />
+        </div>
+
         {error && (
           <p className="text-sm text-destructive" role="alert">
             {error}
@@ -413,15 +446,25 @@ export function TaskSidepanel({
         )}
 
         {canEdit && (
-          <div className="pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={deleteTask}
-              disabled={savingField === "delete"}
-            >
-              {savingField === "delete" ? "Deleting..." : "Delete task"}
-            </Button>
+          <div className="pt-2 space-y-3">
+            <TaskRepeat
+              projectId={projectId}
+              taskId={task.id}
+              onRepeated={() => {
+                onRefresh?.();
+                onClose();
+              }}
+            />
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={deleteTask}
+                disabled={savingField === "delete"}
+              >
+                {savingField === "delete" ? "Deleting..." : "Delete task"}
+              </Button>
+            </div>
           </div>
         )}
 
@@ -479,6 +522,7 @@ export function TaskSidepanel({
           </div>
         </div>
       </div>
+      )}
     </aside>
   );
 }

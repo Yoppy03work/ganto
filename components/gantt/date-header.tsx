@@ -6,6 +6,7 @@ import type {
   WeekCell,
   MonthCell,
   YearGroup,
+  QuarterCell,
 } from "@/lib/gantt/date";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +28,22 @@ type MonthProps = {
   years: YearGroup[];
 };
 
+type QuarterProps = {
+  kind: "Quarter";
+  months: MonthCell[];
+  quarters: QuarterCell[];
+};
+
+type YearProps = {
+  kind: "Year";
+  quarters: QuarterCell[];
+  years: YearGroup[];
+};
+
 export function DateHeader(
-  props: ({ totalWidth: number } & (DayProps | WeekProps | MonthProps))
+  props: {
+    totalWidth: number;
+  } & (DayProps | WeekProps | MonthProps | QuarterProps | YearProps)
 ) {
   if (props.kind === "Day") {
     return <DayHeader cells={props.cells} groups={props.groups} totalWidth={props.totalWidth} />;
@@ -36,7 +51,76 @@ export function DateHeader(
   if (props.kind === "Week") {
     return <WeekHeader weeks={props.weeks} months={props.months} totalWidth={props.totalWidth} />;
   }
+  if (props.kind === "Quarter") {
+    // Top = quarters ("Q1 2026"), bottom = months.
+    return (
+      <GroupedHeader
+        groups={props.quarters.map((q) => ({ label: q.label, widthPx: q.widthPx }))}
+        cells={props.months.map((m) => ({ label: m.label, widthPx: m.widthPx }))}
+        totalWidth={props.totalWidth}
+      />
+    );
+  }
+  if (props.kind === "Year") {
+    // Top = years, bottom = quarters ("Q1".."Q4").
+    return (
+      <GroupedHeader
+        groups={props.years.map((y) => ({ label: y.label, widthPx: y.widthPx }))}
+        cells={props.quarters.map((q) => ({ label: q.label, widthPx: q.widthPx }))}
+        totalWidth={props.totalWidth}
+      />
+    );
+  }
   return <MonthHeader months={props.months} years={props.years} totalWidth={props.totalWidth} />;
+}
+
+/**
+ * Generic two-row header: a top "group" row and a bottom "cell" row, each
+ * just a list of {label, widthPx}. Used by Quarter and Year scales (and
+ * structurally identical to Month).
+ */
+function GroupedHeader({
+  groups,
+  cells,
+  totalWidth,
+}: {
+  groups: { label: string; widthPx: number }[];
+  cells: { label: string; widthPx: number }[];
+  totalWidth: number;
+}) {
+  return (
+    <div
+      className="sticky top-0 z-10 bg-background"
+      style={{ borderBottom: "1px solid var(--border)", width: totalWidth }}
+    >
+      <div className="flex h-6" style={{ borderBottom: "1px solid var(--border)" }}>
+        {groups.map((g, i) => (
+          <div
+            key={i}
+            className="flex items-center font-mono text-[11px] text-muted-foreground uppercase tracking-wider overflow-hidden"
+            style={{
+              width: g.widthPx,
+              paddingLeft: 8,
+              borderRight: i < groups.length - 1 ? "1px solid var(--border)" : "none",
+            }}
+          >
+            {g.label}
+          </div>
+        ))}
+      </div>
+      <div className="flex h-[42px]">
+        {cells.map((c, i) => (
+          <div
+            key={i}
+            className="relative flex flex-col items-center justify-center font-mono overflow-hidden"
+            style={{ width: c.widthPx, borderRight: "1px solid var(--border)" }}
+          >
+            <div className="text-[10px] text-foreground leading-none">{c.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function DayHeader({

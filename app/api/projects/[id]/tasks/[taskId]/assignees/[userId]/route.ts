@@ -6,6 +6,7 @@ import { hasCapabilityFor } from "@/lib/auth/permission";
 import { getTask } from "@/lib/projects/tasks";
 import { getMembership } from "@/lib/projects/members";
 import { recordAudit } from "@/lib/audit/log";
+import { createNotifications } from "@/lib/projects/notifications";
 
 export const runtime = "nodejs";
 
@@ -61,6 +62,23 @@ export async function PUT(
       targetId: taskId,
       after: { userId },
     });
+    // Notify the assignee (best-effort; createNotifications skips self-assign).
+    try {
+      const t = await getTask(taskId, projectId);
+      await createNotifications([
+        {
+          userId,
+          projectId,
+          taskId,
+          type: "assigned",
+          actorId: me.id,
+          title: "タスクにアサインされました",
+          body: t?.title ?? null,
+        },
+      ]);
+    } catch (e) {
+      console.warn("[assignees] notification failed", e);
+    }
   }
   return NextResponse.json({ ok: true });
 }

@@ -1,8 +1,7 @@
 import "server-only";
-import { isNull, eq, inArray } from "drizzle-orm";
+import { isNull, eq, and, inArray } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { recordAudit } from "@/lib/audit/log";
-import { seedSampleTasks } from "./sample-tasks";
 
 /**
  * Create a new project, clone built-in role templates into project-scoped
@@ -105,12 +104,6 @@ export async function createProject(opts: {
     },
   });
 
-  // 6) Seed sample tasks so the Gantt isn't empty on first visit.
-  // Only for local-mode projects; GitHub-backed pulls from the connected project.
-  if ((opts.storageMode ?? "local") === "local") {
-    await seedSampleTasks({ projectId, createdBy: opts.userId });
-  }
-
   return { projectId, ownerRoleId: ownerRole.clonedId };
 }
 
@@ -131,7 +124,13 @@ export async function listProjectsForUser(userId: string) {
     .from(schema.memberships)
     .innerJoin(schema.projects, eq(schema.projects.id, schema.memberships.projectId))
     .innerJoin(schema.roles, eq(schema.roles.id, schema.memberships.roleId))
-    .where(eq(schema.memberships.userId, userId));
+    .where(
+      and(
+        eq(schema.memberships.userId, userId),
+        // Hide soft-deleted projects from the list / switcher.
+        isNull(schema.projects.deletedAt)
+      )
+    );
 
   // newest-joined first
   rows.sort((a, b) => b.joinedAt.getTime() - a.joinedAt.getTime());

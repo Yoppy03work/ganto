@@ -1,14 +1,21 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { getCurrentUser } from "@/lib/auth/server";
 import { listProjectTasks } from "@/lib/projects/tasks";
 import { listProjectMembers } from "@/lib/projects/members";
 import { listProjectDependencies } from "@/lib/projects/dependencies";
+import { listProjectMilestones } from "@/lib/projects/milestones";
+import { listProjectBaselines } from "@/lib/projects/baselines";
+import { listProjectTemplates } from "@/lib/projects/templates";
+import { listProjectsForUser } from "@/lib/projects/create";
+import { ProjectSwitcher } from "@/components/project-switcher";
 import { hasCapability } from "@/lib/auth/permission";
+import { filterVisibleTasks } from "@/lib/gantt/visibility";
 import { Button } from "@/components/ui/button";
 import { GanttScreen } from "@/components/gantt/gantt-screen";
+import { NotificationBell } from "@/components/notification-bell";
 import type { GanttTaskDTO } from "@/lib/gantt/types";
 
 export const dynamic = "force-dynamic";
@@ -30,19 +37,44 @@ export default async function ProjectPage({
     .where(
       and(
         eq(schema.memberships.userId, user.id),
-        eq(schema.memberships.projectId, projectId)
+        eq(schema.memberships.projectId, projectId),
+        isNull(schema.projects.deletedAt)
       )
     )
     .limit(1);
   if (rows.length === 0) notFound();
   const { project, role } = rows[0];
 
-  const [tasksRaw, canCreate, membersRaw, deps] = await Promise.all([
-    listProjectTasks(projectId),
-    hasCapability(user.id, projectId, "task.create"),
-    listProjectMembers(projectId),
-    listProjectDependencies(projectId),
-  ]);
+  const [tasksRaw, canCreate, membersRaw, deps, milestonesRaw, baselines, templatesRaw, allProjects] =
+    await Promise.all([
+      listProjectTasks(projectId),
+      hasCapability(user.id, projectId, "task.create"),
+      listProjectMembers(projectId),
+      listProjectDependencies(projectId),
+      listProjectMilestones(projectId),
+      listProjectBaselines(projectId),
+      listProjectTemplates(projectId),
+      listProjectsForUser(user.id),
+    ]);
+
+  const milestones = milestonesRaw.map((m) => ({
+    id: m.id,
+    title: m.title,
+    date: m.date.toISOString(),
+    color: m.color,
+    lockVersion: m.lockVersion,
+  }));
+  const baselineList = baselines.map((b) => ({
+    id: b.id,
+    name: b.name,
+    createdAt: b.createdAt.toISOString(),
+  }));
+  const templates = templatesRaw.map((t) => ({
+    id: t.id,
+    name: t.name,
+    items: t.items.map((it) => ({ title: it.title })),
+    createdAt: t.createdAt.toISOString(),
+  }));
 
   const members = membersRaw.map((m) => ({
     userId: m.userId,
@@ -52,15 +84,7 @@ export default async function ProjectPage({
   }));
 
   // Apply visibility filter (mirrors API logic for the initial server render).
-  const filtered = tasksRaw.filter((t) => {
-    if (role.name === "Owner" || role.name === "Admin") return true;
-    if (t.visibility === "all") return true;
-    if (t.visibility === "members" && role.name !== "Viewer") return true;
-    if (t.visibility === "private") {
-      return t.createdBy === user.id || t.assignees.some((a) => a.userId === user.id);
-    }
-    return false;
-  });
+  const filtered = filterVisibleTasks(tasksRaw, role.name, user.id);
 
   const tasks: GanttTaskDTO[] = filtered.map((t) => ({
     id: t.id,
@@ -88,7 +112,10 @@ export default async function ProjectPage({
             ganto
           </Link>
           <span className="text-muted-foreground">/</span>
-          <span className="text-sm font-medium truncate">{project.name}</span>
+          <ProjectSwitcher
+            projects={allProjects.map((p) => ({ id: p.id, name: p.name }))}
+            currentId={project.id}
+          />
           <span className="inline-flex items-center rounded-md bg-muted text-muted-foreground border border-border px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide">
             {role.name}
           </span>
@@ -100,6 +127,12 @@ export default async function ProjectPage({
           <Link href={`/p/${project.id}/roles`}>
             <Button variant="ghost" size="sm">Roles</Button>
           </Link>
+          <Link href={`/p/${project.id}/resources`}>
+            <Button variant="ghost" size="sm">Resources</Button>
+          </Link>
+          <Link href={`/p/${project.id}/report`}>
+            <Button variant="ghost" size="sm">Report</Button>
+          </Link>
           <Link href={`/p/${project.id}/audit`}>
             <Button variant="ghost" size="sm">Audit</Button>
           </Link>
@@ -109,6 +142,7 @@ export default async function ProjectPage({
           <Link href={`/p/${project.id}/settings`}>
             <Button variant="ghost" size="sm">Settings</Button>
           </Link>
+          <NotificationBell />
         </div>
       </header>
 
@@ -119,6 +153,10 @@ export default async function ProjectPage({
         canCreate={canCreate}
         members={members}
         currentUserId={user.id}
+        projectName={project.name}
+        initialMilestones={milestones}
+        baselines={baselineList}
+        templates={templates}
       />
     </div>
   );

@@ -1,5 +1,7 @@
 "use client";
 
+import { memo } from "react";
+
 export function TodayLine({ x, height }: { x: number; height: number }) {
   return (
     <div
@@ -37,7 +39,7 @@ type GridCell = {
 };
 
 /** Faint vertical grid lines + weekend / holiday column tint behind the bars. */
-export function TimelineGrid({ cells }: { cells: GridCell[] }) {
+export const TimelineGrid = memo(function TimelineGrid({ cells }: { cells: GridCell[] }) {
   // Pre-compute cumulative left offsets via reduce so render stays pure.
   const positioned = cells.reduce<Array<GridCell & { left: number }>>(
     (acc, c) => {
@@ -72,4 +74,4 @@ export function TimelineGrid({ cells }: { cells: GridCell[] }) {
       ))}
     </div>
   );
-}
+});
